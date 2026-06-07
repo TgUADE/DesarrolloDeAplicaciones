@@ -1,3 +1,4 @@
+import fs from 'fs';
 import multer from 'multer';
 import path from 'path';
 import { env } from './env';
@@ -12,6 +13,8 @@ const storage = multer.diskStorage({
     } else if (file.fieldname === 'itemImages') {
       folder = path.join(env.UPLOAD_DIR, 'items');
     }
+    // Crea la carpeta destino si todavía no existe.
+    fs.mkdirSync(folder, { recursive: true });
     cb(null, folder);
   },
   filename: (_req, file, cb) => {

@@ -43,8 +43,10 @@ export const adminUserController = {
         where: { id: req.params.id },
         data: { status: status as UserStatus },
       });
-      // If approving and email provided, send registration token
-      if (status === 'aprobado' && email) {
+      // Flujo legacy: solo si el usuario aún no tiene clave (registro viejo en 2 etapas)
+      // se envía el email con token para completar el registro. Los usuarios que se
+      // registran con email+clave desde la app ya tienen credenciales y no lo necesitan.
+      if (status === 'aprobado' && email && !user.passwordHash) {
         await authService.generateRegistrationToken(req.params.id, email);
       }
       return ok(res, user);

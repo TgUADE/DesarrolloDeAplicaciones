@@ -1,23 +1,51 @@
+import fs from 'fs';
+import path from 'path';
 import { Request, Response } from 'express';
 import { authService } from '../services/auth.service';
 import { verifyRefreshToken, signAccessToken } from '../utils/jwt';
 import { ok, created, badRequest, unauthorized, serverError } from '../utils/apiResponse';
 import { env } from '../config/env';
 
+/** Guarda una imagen en base64 (con o sin prefijo data URI) y devuelve su URL pública. */
+function saveBase64Image(base64: string, prefix: string): string {
+  const dir = path.join(env.UPLOAD_DIR, 'documents');
+  fs.mkdirSync(dir, { recursive: true });
+  const data = base64.includes(',') ? base64.split(',')[1] : base64;
+  const filename = `${prefix}-${Date.now()}-${Math.round(Math.random() * 1e9)}.jpg`;
+  fs.writeFileSync(path.join(dir, filename), Buffer.from(data, 'base64'));
+  return `/uploads/documents/${filename}`;
+}
+
 export const authController = {
   async register(req: Request, res: Response) {
     try {
-      const { nombre, apellido, domicilioLegal, paisOrigen } = req.body;
-      const files = req.files as { [fieldname: string]: Express.Multer.File[] };
-      if (!files?.docFrente?.[0] || !files?.docDorso?.[0]) {
+      const { nombre, apellido, domicilioLegal, paisOrigen, email, password, docFrenteBase64, docDorsoBase64 } = req.body;
+      if (!email || !password) {
+        return badRequest(res, 'Email y contraseña son obligatorios');
+      }
+      if (String(password).length < 8) {
+        return badRequest(res, 'La contraseña debe tener al menos 8 caracteres');
+      }
+
+      // Acepta las fotos del documento por multipart (web) o por base64 en JSON (mobile).
+      const files = req.files as { [fieldname: string]: Express.Multer.File[] } | undefined;
+      let docFrenteUrl: string;
+      let docDorsoUrl: string;
+      if (files?.docFrente?.[0] && files?.docDorso?.[0]) {
+        docFrenteUrl = `/uploads/documents/${files.docFrente[0].filename}`;
+        docDorsoUrl = `/uploads/documents/${files.docDorso[0].filename}`;
+      } else if (docFrenteBase64 && docDorsoBase64) {
+        docFrenteUrl = saveBase64Image(docFrenteBase64, 'docFrente');
+        docDorsoUrl = saveBase64Image(docDorsoBase64, 'docDorso');
+      } else {
         return badRequest(res, 'Se requieren fotos del documento (frente y dorso)');
       }
-      const docFrenteUrl = `/uploads/documents/${files.docFrente[0].filename}`;
-      const docDorsoUrl = `/uploads/documents/${files.docDorso[0].filename}`;
-      const user = await authService.registerStage1({ nombre, apellido, docFrenteUrl, docDorsoUrl, domicilioLegal, paisOrigen });
+
+      const user = await authService.registerStage1({ nombre, apellido, docFrenteUrl, docDorsoUrl, domicilioLegal, paisOrigen, email, password });
       return created(res, { id: user.id, nombre: user.nombre, apellido: user.apellido, status: user.status });
     } catch (err: any) {
-      return serverError(res, err.message);
+      const status = err.status || 500;
+      return res.status(status).json({ success: false, error: err.message });
     }
   },
 

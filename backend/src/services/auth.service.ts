@@ -12,8 +12,15 @@ export const authService = {
     docDorsoUrl: string;
     domicilioLegal: string;
     paisOrigen: string;
+    email: string;
+    password: string;
   }) {
-    return prisma.user.create({ data });
+    const existing = await prisma.user.findUnique({ where: { email: data.email } });
+    if (existing) throw { status: 409, message: 'Ese email ya está registrado' };
+    const { password, ...rest } = data;
+    const passwordHash = await hashPassword(password);
+    // Queda en estado 'pendiente' hasta que la empresa apruebe la cuenta.
+    return prisma.user.create({ data: { ...rest, passwordHash } });
   },
 
   async completeRegistration(token: string, email: string, password: string) {
