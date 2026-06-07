@@ -1,0 +1,55 @@
+/* SubastApp — Tokens de tema (tipografía, espaciado, radios, sombras).
+   Derivado de los wireframes en design-reference/guia-estilo. */
+@import './colors.css';
+
+:root {
+  /* ---- Tipografía ---- */
+  --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  --font-size-xs: 0.75rem;   /* 12px — badges, etiquetas CATEGORIA */
+  --font-size-sm: 0.875rem;  /* 14px — texto secundario */
+  --font-size-base: 1rem;    /* 16px — cuerpo */
+  --font-size-lg: 1.25rem;   /* 20px — títulos de sección ("En vivo ahora") */
+  --font-size-xl: 1.75rem;   /* 28px — título de pantalla ("Subastas") */
+  --font-weight-normal: 400;
+  --font-weight-medium: 600;
+  --font-weight-bold: 700;
+
+  /* ---- Espaciado ---- */
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 16px;
+  --space-lg: 24px;
+  --space-xl: 32px;
+
+  /* ---- Radios ---- */
+  --radius-sm: 8px;
+  --radius-md: 14px;    /* tarjetas */
+  --radius-lg: 24px;    /* header (esquinas inferiores), paneles */
+  --radius-xl: 32px;    /* ícono de app / splash */
+  --radius-pill: 999px; /* filtros tipo pill, badges */
+
+  /* ---- Sombras ---- */
+  --shadow-card: 0 2px 8px rgba(15, 52, 96, 0.08);
+  --shadow-elevated: 0 6px 20px rgba(15, 52, 96, 0.15);
+
+  /* ---- Gradiente de marca (splash / headers) ---- */
+  --gradient-brand: linear-gradient(160deg, #0f3460 0%, #1d4e89 100%);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: var(--font-size-base);
+  background: var(--color-bg);
+  color: var(--color-text);
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3 {
+  font-weight: var(--font-weight-bold);
+  margin: 0;
+}

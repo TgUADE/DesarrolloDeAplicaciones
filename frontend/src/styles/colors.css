@@ -1,0 +1,35 @@
+/* SubastApp — Paleta de colores oficial.
+   Fuente: design-reference/paleta/Paleta de Colores.svg */
+:root {
+  /* ---- Primarios ---- */
+  --color-primary-dark: #0f3460;  /* navegación principal, headers, botones primarios */
+  --color-primary: #1d4e89;       /* acciones principales */
+  --color-primary-light: #2a6cb5;
+
+  /* ---- Acento ---- */
+  --color-accent: #c9a84c;        /* importes, pujas destacadas, valores ganadores */
+  --color-accent-light: #e8d5a0;
+
+  /* ---- Semánticos ---- */
+  --color-success: #1d9e75;       /* puja aceptada / ganado / pago realizado */
+  --color-danger: #e24b4a;        /* error / perdido / bloqueado / multa */
+  --color-warning: #ef9f27;       /* pendiente / por verificar / subasta próxima */
+
+  /* ---- Categorías de usuario ---- */
+  --color-cat-comun: #888780;
+  --color-cat-especial: #378add;
+  --color-cat-plata: #b4b2a9;
+  --color-cat-oro: #ef9f27;
+  --color-cat-platino: #7f77dd;
+
+  /* ---- Neutros ---- */
+  --color-bg: #e5e3dd;            /* fondo de la app */
+  --color-surface: #ffffff;       /* tarjetas, paneles */
+  --color-border: #d8d6cf;
+  --color-placeholder: #d4d4d4;
+
+  /* ---- Texto ---- */
+  --color-text: #1a1a1a;
+  --color-text-muted: #6b6b6b;
+  --color-text-on-primary: #ffffff;
+}

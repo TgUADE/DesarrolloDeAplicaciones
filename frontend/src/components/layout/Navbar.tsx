@@ -1,9 +1,16 @@
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+
+// Rutas full-screen donde la barra no debe mostrarse (splash y auth).
+const HIDDEN_PREFIXES = ['/auth'];
 
 export default function Navbar() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const { pathname } = useLocation();
+
+  const hidden = pathname === '/' || HIDDEN_PREFIXES.some((p) => pathname.startsWith(p));
+  if (hidden) return null;
 
   const handleLogout = async () => {
     await logout();

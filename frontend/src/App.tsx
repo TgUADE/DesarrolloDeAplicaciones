@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider } from './context/AuthContext';
 import { ProtectedRoute, AdminRoute } from './components/common/ProtectedRoute';
@@ -31,6 +31,12 @@ import AdminAuctions from './pages/admin/AdminAuctions';
 import AdminAuctionRoom from './pages/admin/AdminAuctionRoom';
 import AdminSubmissions from './pages/admin/AdminSubmissions';
 
+// Entry
+import Splash from './pages/Splash';
+
+// Dev
+import StyleGuide from './pages/StyleGuide';
+
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
@@ -47,7 +53,8 @@ export default function App() {
         <BrowserRouter>
           <Navbar />
           <Routes>
-            <Route path="/" element={<Navigate to="/auctions" replace />} />
+            <Route path="/" element={<Splash />} />
+            <Route path="/styleguide" element={<StyleGuide />} />
 
             {/* Auth */}
             <Route path="/auth/login" element={<Login />} />
