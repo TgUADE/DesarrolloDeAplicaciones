@@ -19,6 +19,8 @@ import { Button } from '@/components/ui/button';
 import { ScreenHeader } from '@/components/ui/screen-header';
 import { TextField } from '@/components/ui/text-field';
 import { Brand, FontSize, FontWeight, Radius, space } from '@/constants/theme';
+import { getApiErrorMessage } from '@/utils/errors';
+import { cleanText, hasText, isValidEmail } from '@/utils/validation';
 
 /* Registro inicial: datos personales + fotos del DNI. Queda pendiente hasta aprobación. */
 export default function RegisterStep1() {
@@ -45,8 +47,18 @@ export default function RegisterStep1() {
   };
 
   const handleSubmit = async () => {
-    if (!nombre || !apellido || !domicilioLegal || !paisOrigen || !email) {
+    const cleanNombre = cleanText(nombre);
+    const cleanApellido = cleanText(apellido);
+    const cleanDomicilio = cleanText(domicilioLegal);
+    const cleanPais = cleanText(paisOrigen);
+    const cleanEmail = cleanText(email);
+
+    if (!hasText(cleanNombre) || !hasText(cleanApellido) || !hasText(cleanDomicilio) || !hasText(cleanPais) || !hasText(cleanEmail)) {
       setError('Completá todos los datos.');
+      return;
+    }
+    if (!isValidEmail(cleanEmail)) {
+      setError('Ingresá un email válido.');
       return;
     }
     if (!docFrente || !docDorso) {
@@ -61,17 +73,17 @@ export default function RegisterStep1() {
         readAsStringAsync(docDorso, { encoding: 'base64' }),
       ]);
       await register({
-        nombre,
-        apellido,
-        domicilioLegal,
-        paisOrigen,
-        email: email.trim(),
+        nombre: cleanNombre,
+        apellido: cleanApellido,
+        domicilioLegal: cleanDomicilio,
+        paisOrigen: cleanPais,
+        email: cleanEmail,
         docFrenteBase64,
         docDorsoBase64,
       });
       setDone(true);
     } catch (err: any) {
-      setError(err?.response?.data?.error ?? err?.message ?? 'No se pudo enviar la solicitud.');
+      setError(getApiErrorMessage(err, 'No se pudo enviar la solicitud.'));
     } finally {
       setLoading(false);
     }

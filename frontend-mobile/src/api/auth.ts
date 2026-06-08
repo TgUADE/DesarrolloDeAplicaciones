@@ -1,9 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import axios from 'axios';
-
-import { API_URL } from '@/constants/config';
-
-const client = axios.create({ baseURL: API_URL, withCredentials: true });
+import client from '@/api/client';
 
 export interface AuthUser {
   id: string;
@@ -53,8 +49,12 @@ export interface CompleteRegistrationPayload {
 }
 
 /** Segunda etapa: luego de la aprobación, el usuario genera su clave personal. */
-export async function completeRegistration(payload: CompleteRegistrationPayload): Promise<void> {
-  await client.post('/auth/complete-registration', payload);
+export async function completeRegistration(payload: CompleteRegistrationPayload): Promise<AuthUser> {
+  const res = await client.post('/auth/complete-registration', payload);
+  const { accessToken, user } = res.data.data as { accessToken: string; user: AuthUser };
+  await AsyncStorage.setItem('accessToken', accessToken);
+  await AsyncStorage.setItem('user', JSON.stringify(user));
+  return user;
 }
 
 /** Devuelve el usuario guardado en sesión (o null si no hay). */

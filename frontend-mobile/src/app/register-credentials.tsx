@@ -1,13 +1,21 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useState } from 'react';
-import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { completeRegistration } from '@/api/auth';
+import type { PaymentMethodType } from '@/api/payment-methods';
 import { Button } from '@/components/ui/button';
 import { ScreenHeader } from '@/components/ui/screen-header';
 import { TextField } from '@/components/ui/text-field';
 import { Brand, FontSize, FontWeight, Radius, space } from '@/constants/theme';
+import { getApiErrorMessage } from '@/utils/errors';
+
+const PAYMENT_METHODS: Array<{ id: PaymentMethodType; titulo: string; detalle: string }> = [
+  { id: 'cuenta_bancaria_nacional', titulo: 'Cuenta bancaria', detalle: 'Nacional o extranjera' },
+  { id: 'tarjeta_credito_nacional', titulo: 'Tarjeta de crédito', detalle: 'Visa, Mastercard, Amex' },
+  { id: 'cheque_certificado', titulo: 'Cheque certificado', detalle: 'Monto determinado' },
+];
 
 /* Segunda etapa: llega por email cuando la empresa aprueba al usuario. */
 export default function CompleteRegistration() {
@@ -17,9 +25,9 @@ export default function CompleteRegistration() {
 
   const [clave, setClave] = useState('');
   const [confirmar, setConfirmar] = useState('');
+  const [tipoPago, setTipoPago] = useState<PaymentMethodType>('cuenta_bancaria_nacional');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const [done, setDone] = useState(false);
 
   const handleSubmit = async () => {
     if (!token) {
@@ -38,29 +46,14 @@ export default function CompleteRegistration() {
     setError('');
     setLoading(true);
     try {
-      await completeRegistration({ token, password: clave });
-      setDone(true);
+      const user = await completeRegistration({ token, password: clave });
+      router.replace({ pathname: '/add-payment-method', params: { userId: user.id, tipo: tipoPago } });
     } catch (err: any) {
-      setError(err?.response?.data?.error ?? err?.message ?? 'No se pudo completar el registro.');
+      setError(getApiErrorMessage(err, 'No se pudo completar el registro.'));
     } finally {
       setLoading(false);
     }
   };
-
-  if (done) {
-    return (
-      <View style={styles.root}>
-        <StatusBar style="light" />
-        <ScreenHeader title="Registro" />
-        <View style={styles.successWrap}>
-          <Text style={styles.successCheck}>OK</Text>
-          <Text style={styles.successTitle}>Registro completado</Text>
-          <Text style={styles.successText}>Ya podés iniciar sesión con tu email y clave personal.</Text>
-          <Button title="Ir al login" onPress={() => router.replace('/login')} style={styles.successBtn} />
-        </View>
-      </View>
-    );
-  }
 
   return (
     <View style={styles.root}>
@@ -101,7 +94,23 @@ export default function CompleteRegistration() {
             secureTextEntry
           />
 
-          <Button title="Finalizar registro" onPress={handleSubmit} loading={loading} style={styles.submitBtn} />
+          <Text style={styles.sectionTitle}>Medio de pago</Text>
+          <View style={styles.methodList}>
+            {PAYMENT_METHODS.map((method) => {
+              const selected = tipoPago === method.id;
+              return (
+                <Pressable
+                  key={method.id}
+                  onPress={() => setTipoPago(method.id)}
+                  style={[styles.methodCard, selected && styles.methodCardSelected]}>
+                  <Text style={styles.methodTitle}>{method.titulo}</Text>
+                  <Text style={styles.methodDetail}>{method.detalle}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+
+          <Button title="Agregar método de pago" onPress={handleSubmit} loading={loading} style={styles.submitBtn} />
         </ScrollView>
       </KeyboardAvoidingView>
     </View>
@@ -140,10 +149,29 @@ const styles = StyleSheet.create({
     marginBottom: space.md,
   },
   errorText: { color: Brand.danger, fontSize: FontSize.sm },
-  submitBtn: { marginTop: space.lg },
-  successWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: space.lg, gap: space.sm },
-  successCheck: { fontSize: FontSize.xl, fontWeight: FontWeight.bold, color: Brand.success },
-  successTitle: { fontSize: FontSize.xl, fontWeight: FontWeight.bold, color: Brand.text },
-  successText: { fontSize: FontSize.base, color: Brand.textMuted, textAlign: 'center', marginTop: space.xs },
-  successBtn: { alignSelf: 'stretch', marginTop: space.lg },
+  sectionTitle: {
+    fontSize: FontSize.lg,
+    fontWeight: FontWeight.medium,
+    color: Brand.textMuted,
+    textAlign: 'center',
+    marginTop: space.lg,
+    marginBottom: space.md,
+  },
+  methodList: { gap: space.sm },
+  methodCard: {
+    backgroundColor: Brand.surface,
+    borderWidth: 1,
+    borderColor: Brand.border,
+    borderRadius: Radius.sm,
+    paddingVertical: 14,
+    paddingHorizontal: space.md,
+  },
+  methodCardSelected: {
+    borderColor: Brand.primary,
+    borderWidth: 2,
+    backgroundColor: 'rgba(29, 78, 137, 0.06)',
+  },
+  methodTitle: { fontSize: FontSize.sm, fontWeight: FontWeight.medium, color: Brand.text },
+  methodDetail: { fontSize: FontSize.xs, color: Brand.textMuted, marginTop: 2 },
+  submitBtn: { marginTop: space.xl },
 });

@@ -18,6 +18,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { login } from '@/api/auth';
 import { BrandLogo } from '@/components/brand-logo';
 import { Brand, FontSize, FontWeight, Radius, space } from '@/constants/theme';
+import { getApiErrorMessage } from '@/utils/errors';
+import { cleanText, isValidEmail } from '@/utils/validation';
 
 export default function Login() {
   const router = useRouter();
@@ -28,17 +30,22 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async () => {
-    if (!email || !password) {
+    const cleanEmail = cleanText(email);
+    if (!cleanEmail || !password) {
       setError('Completá email y contraseña');
+      return;
+    }
+    if (!isValidEmail(cleanEmail)) {
+      setError('Ingresá un email válido.');
       return;
     }
     setError('');
     setLoading(true);
     try {
-      await login(email.trim(), password);
+      await login(cleanEmail, password);
       router.replace('/home');
     } catch (err: any) {
-      setError(err?.response?.data?.error ?? 'No se pudo iniciar sesión. Verificá tu conexión.');
+      setError(getApiErrorMessage(err, 'No se pudo iniciar sesión.'));
     } finally {
       setLoading(false);
     }
