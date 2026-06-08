@@ -1,9 +1,10 @@
 import { Request, Response } from 'express';
 import { prisma } from '../../config/prisma';
 import { authService } from '../../services/auth.service';
-import { ok, notFound, serverError } from '../../utils/apiResponse';
+import { badRequest, ok, notFound, serverError } from '../../utils/apiResponse';
 import { getPagination } from '../../utils/pagination';
 import { UserCategory, UserStatus } from '@prisma/client';
+import { env } from '../../config/env';
 
 export const adminUserController = {
   async list(req: Request, res: Response) {
@@ -43,13 +44,64 @@ export const adminUserController = {
         where: { id: req.params.id },
         data: { status: status as UserStatus },
       });
-      // Flujo legacy: solo si el usuario aún no tiene clave (registro viejo en 2 etapas)
-      // se envía el email con token para completar el registro. Los usuarios que se
-      // registran con email+clave desde la app ya tienen credenciales y no lo necesitan.
-      if (status === 'aprobado' && email && !user.passwordHash) {
-        await authService.generateRegistrationToken(req.params.id, email);
+      // Al aprobar, se habilita la segunda etapa de registro: el usuario recibe
+      // el token para ingresar a la app y generar su clave personal.
+      const targetEmail = email || user.email;
+      if (status === 'aprobado' && targetEmail && !user.passwordHash) {
+        await authService.generateRegistrationToken(req.params.id, targetEmail);
       }
       return ok(res, user);
+    } catch (err: any) { return serverError(res, err.message); }
+  },
+
+  async approveRegistration(req: Request, res: Response) {
+    try {
+      const { categoria, email } = req.body;
+      if (categoria && !['comun', 'especial', 'plata', 'oro', 'platino'].includes(categoria)) {
+        return badRequest(res, 'Categoría inválida');
+      }
+
+      const existing = await prisma.user.findUnique({ where: { id: req.params.id } });
+      if (!existing) return notFound(res, 'Usuario no encontrado');
+
+      const targetEmail = email || existing.email;
+      if (!targetEmail) return badRequest(res, 'El usuario necesita un email para completar el registro');
+
+      const user = await prisma.user.update({
+        where: { id: req.params.id },
+        data: {
+          status: 'aprobado',
+          categoria: (categoria || existing.categoria) as UserCategory,
+          email: targetEmail,
+        },
+        select: {
+          id: true,
+          nombre: true,
+          apellido: true,
+          email: true,
+          categoria: true,
+          status: true,
+          passwordHash: true,
+        },
+      });
+
+      let completionToken: string | null = null;
+      if (!user.passwordHash) {
+        completionToken = await authService.generateRegistrationToken(user.id, targetEmail);
+      }
+
+      return ok(res, {
+        user: {
+          id: user.id,
+          nombre: user.nombre,
+          apellido: user.apellido,
+          email: user.email,
+          categoria: user.categoria,
+          status: user.status,
+        },
+        completionToken,
+        completionUrl: completionToken ? `${env.MOBILE_COMPLETE_REGISTRATION_URL}?token=${completionToken}` : null,
+      });
     } catch (err: any) { return serverError(res, err.message); }
   },
 

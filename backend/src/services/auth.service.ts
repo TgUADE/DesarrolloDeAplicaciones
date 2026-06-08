@@ -13,17 +13,15 @@ export const authService = {
     domicilioLegal: string;
     paisOrigen: string;
     email: string;
-    password: string;
   }) {
     const existing = await prisma.user.findUnique({ where: { email: data.email } });
     if (existing) throw { status: 409, message: 'Ese email ya está registrado' };
-    const { password, ...rest } = data;
-    const passwordHash = await hashPassword(password);
-    // Queda en estado 'pendiente' hasta que la empresa apruebe la cuenta.
-    return prisma.user.create({ data: { ...rest, passwordHash } });
+    // Primera etapa: la empresa debe verificar y aprobar antes de que el
+    // usuario pueda generar su clave personal.
+    return prisma.user.create({ data });
   },
 
-  async completeRegistration(token: string, email: string, password: string) {
+  async completeRegistration(token: string, password: string) {
     const user = await prisma.user.findFirst({
       where: { registrationToken: token },
     });
@@ -32,13 +30,12 @@ export const authService = {
     if (user.tokenExpiresAt && user.tokenExpiresAt < new Date()) {
       throw { status: 410, message: 'El token ha expirado' };
     }
-    const existing = await prisma.user.findUnique({ where: { email } });
-    if (existing && existing.id !== user.id) throw { status: 409, message: 'Email ya registrado' };
+    if (!user.email) throw { status: 400, message: 'El usuario aprobado no tiene email asociado' };
 
     const passwordHash = await hashPassword(password);
     return prisma.user.update({
       where: { id: user.id },
-      data: { email, passwordHash, registrationToken: null, tokenExpiresAt: null },
+      data: { passwordHash, registrationToken: null, tokenExpiresAt: null },
     });
   },
 
@@ -76,7 +73,7 @@ export const authService = {
     const tokenExpiresAt = new Date(Date.now() + 48 * 60 * 60 * 1000);
     await prisma.user.update({
       where: { id: userId },
-      data: { registrationToken: token, tokenExpiresAt },
+      data: { email, registrationToken: token, tokenExpiresAt },
     });
     await emailService.sendRegistrationComplete(email, token);
     return token;

@@ -19,12 +19,9 @@ function saveBase64Image(base64: string, prefix: string): string {
 export const authController = {
   async register(req: Request, res: Response) {
     try {
-      const { nombre, apellido, domicilioLegal, paisOrigen, email, password, docFrenteBase64, docDorsoBase64 } = req.body;
-      if (!email || !password) {
-        return badRequest(res, 'Email y contraseña son obligatorios');
-      }
-      if (String(password).length < 8) {
-        return badRequest(res, 'La contraseña debe tener al menos 8 caracteres');
+      const { nombre, apellido, domicilioLegal, paisOrigen, email, docFrenteBase64, docDorsoBase64 } = req.body;
+      if (!nombre || !apellido || !domicilioLegal || !paisOrigen || !email) {
+        return badRequest(res, 'Nombre, apellido, domicilio legal, país de origen y email son obligatorios');
       }
 
       // Acepta las fotos del documento por multipart (web) o por base64 en JSON (mobile).
@@ -41,7 +38,7 @@ export const authController = {
         return badRequest(res, 'Se requieren fotos del documento (frente y dorso)');
       }
 
-      const user = await authService.registerStage1({ nombre, apellido, docFrenteUrl, docDorsoUrl, domicilioLegal, paisOrigen, email, password });
+      const user = await authService.registerStage1({ nombre, apellido, docFrenteUrl, docDorsoUrl, domicilioLegal, paisOrigen, email });
       return created(res, { id: user.id, nombre: user.nombre, apellido: user.apellido, status: user.status });
     } catch (err: any) {
       const status = err.status || 500;
@@ -51,8 +48,14 @@ export const authController = {
 
   async completeRegistration(req: Request, res: Response) {
     try {
-      const { token, email, password } = req.body;
-      await authService.completeRegistration(token, email, password);
+      const { token, password } = req.body;
+      if (!token || !password) {
+        return badRequest(res, 'Token y contraseña son obligatorios');
+      }
+      if (String(password).length < 8) {
+        return badRequest(res, 'La contraseña debe tener al menos 8 caracteres');
+      }
+      await authService.completeRegistration(token, password);
       return ok(res, { message: 'Registro completado exitosamente' });
     } catch (err: any) {
       const status = err.status || 500;

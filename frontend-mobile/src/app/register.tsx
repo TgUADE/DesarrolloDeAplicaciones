@@ -1,4 +1,5 @@
 import * as ImagePicker from 'expo-image-picker';
+import { readAsStringAsync } from 'expo-file-system/legacy';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useState } from 'react';
@@ -13,13 +14,13 @@ import {
   View,
 } from 'react-native';
 
+import { register } from '@/api/auth';
 import { Button } from '@/components/ui/button';
 import { ScreenHeader } from '@/components/ui/screen-header';
 import { TextField } from '@/components/ui/text-field';
 import { Brand, FontSize, FontWeight, Radius, space } from '@/constants/theme';
-import { setRegisterDraft } from '@/state/register-draft';
 
-/* Registro - Paso 1: Datos personales + fotos del DNI (según wireframe "Register 1"). */
+/* Registro inicial: datos personales + fotos del DNI. Queda pendiente hasta aprobación. */
 export default function RegisterStep1() {
   const router = useRouter();
   const [nombre, setNombre] = useState('');
@@ -30,6 +31,8 @@ export default function RegisterStep1() {
   const [docFrente, setDocFrente] = useState<string>();
   const [docDorso, setDocDorso] = useState<string>();
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [done, setDone] = useState(false);
 
   const pickImage = async (setUri: (uri: string) => void) => {
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -41,7 +44,7 @@ export default function RegisterStep1() {
     if (!res.canceled) setUri(res.assets[0].uri);
   };
 
-  const handleContinue = () => {
+  const handleSubmit = async () => {
     if (!nombre || !apellido || !domicilioLegal || !paisOrigen || !email) {
       setError('Completá todos los datos.');
       return;
@@ -51,9 +54,45 @@ export default function RegisterStep1() {
       return;
     }
     setError('');
-    setRegisterDraft({ nombre, apellido, domicilioLegal, paisOrigen, email, docFrente, docDorso });
-    router.push('/register-credentials');
+    setLoading(true);
+    try {
+      const [docFrenteBase64, docDorsoBase64] = await Promise.all([
+        readAsStringAsync(docFrente, { encoding: 'base64' }),
+        readAsStringAsync(docDorso, { encoding: 'base64' }),
+      ]);
+      await register({
+        nombre,
+        apellido,
+        domicilioLegal,
+        paisOrigen,
+        email: email.trim(),
+        docFrenteBase64,
+        docDorsoBase64,
+      });
+      setDone(true);
+    } catch (err: any) {
+      setError(err?.response?.data?.error ?? err?.message ?? 'No se pudo enviar la solicitud.');
+    } finally {
+      setLoading(false);
+    }
   };
+
+  if (done) {
+    return (
+      <View style={styles.root}>
+        <StatusBar style="light" />
+        <ScreenHeader title="Registro" />
+        <View style={styles.successWrap}>
+          <Text style={styles.successCheck}>OK</Text>
+          <Text style={styles.successTitle}>Solicitud enviada</Text>
+          <Text style={styles.successText}>
+            La empresa va a verificar tus datos. Si sos aprobado, vas a recibir un email para completar el registro y generar tu clave.
+          </Text>
+          <Button title="Volver al login" onPress={() => router.replace('/login')} style={styles.successBtn} />
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.root}>
@@ -65,7 +104,7 @@ export default function RegisterStep1() {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}>
           <Text style={styles.title}>Datos personales</Text>
-          <Text style={styles.step}>Paso 1 de 2</Text>
+          <Text style={styles.step}>Solicitud de alta</Text>
 
           {error ? (
             <View style={styles.errorBox}>
@@ -103,7 +142,7 @@ export default function RegisterStep1() {
             <DocUpload label="DNI dorso" uri={docDorso} onPress={() => pickImage(setDocDorso)} />
           </View>
 
-          <Button title="Continuar" onPress={handleContinue} style={styles.continueBtn} />
+          <Button title="Enviar solicitud" onPress={handleSubmit} loading={loading} style={styles.continueBtn} />
         </ScrollView>
       </KeyboardAvoidingView>
     </View>
@@ -175,4 +214,9 @@ const styles = StyleSheet.create({
   docImage: { width: '100%', height: '100%' },
   docPlus: { fontSize: 32, color: Brand.textMuted },
   continueBtn: { marginTop: space.xl },
+  successWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: space.lg, gap: space.sm },
+  successCheck: { fontSize: FontSize.xl, fontWeight: FontWeight.bold, color: Brand.success },
+  successTitle: { fontSize: FontSize.xl, fontWeight: FontWeight.bold, color: Brand.text },
+  successText: { fontSize: FontSize.base, color: Brand.textMuted, textAlign: 'center', marginTop: space.xs },
+  successBtn: { alignSelf: 'stretch', marginTop: space.lg },
 });

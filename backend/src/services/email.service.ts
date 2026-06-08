@@ -13,14 +13,40 @@ async function send(to: string, subject: string, html: string) {
 
 export const emailService = {
   async sendRegistrationComplete(to: string, token: string) {
-    const link = `${env.FRONTEND_URL}/auth/complete-registration?token=${token}`;
+    const link = `${env.MOBILE_COMPLETE_REGISTRATION_URL}?token=${token}`;
     await send(
       to,
       'Subastas - Completá tu registro',
-      `<h2>Tu cuenta fue aprobada</h2>
-       <p>Hacé clic en el enlace para completar tu registro y generar tu contraseña:</p>
-       <a href="${link}">${link}</a>
-       <p>El enlace expira en 48 horas.</p>`
+      `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;background:#f8f7f4;margin:0;padding:0;">
+        <tr>
+          <td style="padding:16px;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;background:#ffffff;border:1px solid #d8d6cf;">
+              <tr>
+                <td style="background:#0f3460;color:#ffffff;padding:16px;font-family:Arial,sans-serif;font-size:20px;font-weight:bold;">
+                  Tu cuenta fue aprobada
+                </td>
+              </tr>
+              <tr>
+                <td style="padding:16px;font-family:Arial,sans-serif;color:#1a1a1a;font-size:15px;line-height:22px;">
+                  Ingresá a la app para completar tu registro y generar tu clave personal.
+                </td>
+              </tr>
+              <tr>
+                <td style="padding:0 16px 16px;">
+                  <a href="${link}" style="display:block;background:#1d4e89;color:#ffffff;font-family:Arial,sans-serif;font-size:16px;font-weight:bold;text-align:center;text-decoration:none;padding:14px 12px;">
+                    Completar registro
+                  </a>
+                </td>
+              </tr>
+              <tr>
+                <td style="padding:0 16px 16px;font-family:Arial,sans-serif;color:#6b6b6b;font-size:13px;line-height:18px;">
+                  El enlace expira en 48 horas.
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+      </table>`
     );
   },
 

@@ -33,19 +33,28 @@ export interface RegisterPayload {
   domicilioLegal: string;
   paisOrigen: string;
   email: string;
-  password: string;
   docFrenteBase64: string;
   docDorsoBase64: string;
 }
 
 /**
- * Registro: datos personales + email + clave + fotos del documento.
+ * Primera etapa de registro: datos personales + email + fotos del documento.
  * Las fotos van como base64 dentro de un JSON (no FormData), porque la New
  * Architecture de React Native no soporta los archivos `{uri,name,type}` en
  * FormData ("Unsupported FormDataPart implementation"). El backend las decodifica.
  */
 export async function register(payload: RegisterPayload): Promise<void> {
   await client.post('/auth/register', payload);
+}
+
+export interface CompleteRegistrationPayload {
+  token: string;
+  password: string;
+}
+
+/** Segunda etapa: luego de la aprobación, el usuario genera su clave personal. */
+export async function completeRegistration(payload: CompleteRegistrationPayload): Promise<void> {
+  await client.post('/auth/complete-registration', payload);
 }
 
 /** Devuelve el usuario guardado en sesión (o null si no hay). */

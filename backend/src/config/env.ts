@@ -14,6 +14,7 @@ export const env = {
   JWT_REFRESH_EXPIRES_IN: process.env.JWT_REFRESH_EXPIRES_IN || '7d',
   PORT: parseInt(process.env.PORT || '3000', 10),
   FRONTEND_URL: process.env.FRONTEND_URL || 'http://localhost:5173',
+  MOBILE_COMPLETE_REGISTRATION_URL: process.env.MOBILE_COMPLETE_REGISTRATION_URL || 'exp://10.0.2.2:8081/--/register-credentials',
   UPLOAD_DIR: process.env.UPLOAD_DIR || './uploads',
   SMTP_HOST: process.env.SMTP_HOST || 'localhost',
   SMTP_PORT: parseInt(process.env.SMTP_PORT || '1025', 10),
