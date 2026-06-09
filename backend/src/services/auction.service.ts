@@ -20,7 +20,15 @@ export const auctionService = {
         where,
         skip,
         take: limit,
-        include: { rematador: true, _count: { select: { items: true, participants: true } } },
+        include: {
+          rematador: true,
+          _count: { select: { items: true, participants: true } },
+          items: {
+            take: 1,
+            orderBy: { ordenEnSubasta: 'asc' },
+            select: { id: true, images: { take: 1, orderBy: { orden: 'asc' }, select: { url: true } } },
+          },
+        },
         orderBy: { fechaHora: 'asc' },
       }),
       prisma.auction.count({ where }),
@@ -31,7 +39,15 @@ export const auctionService = {
   async findById(id: string) {
     return prisma.auction.findUnique({
       where: { id },
-      include: { rematador: true, _count: { select: { items: true, participants: true } } },
+      include: {
+        rematador: true,
+        _count: { select: { items: true, participants: true } },
+        items: {
+          take: 1,
+          orderBy: { ordenEnSubasta: 'asc' },
+          select: { id: true, images: { take: 1, orderBy: { orden: 'asc' }, select: { url: true } } },
+        },
+      },
     });
   },
 
@@ -134,8 +150,9 @@ export const auctionService = {
       if (!auction || !auction.currentItemId) throw { status: 400, message: 'No hay ítem activo en esta subasta' };
       if (auction.status !== 'abierta') throw { status: 400, message: 'La subasta no está abierta' };
 
-      // Lock on item
-      await tx.$queryRawUnsafe(`SELECT pg_advisory_xact_lock(hashtext($1))`, auction.currentItemId);
+      // Lock on item. Usar executeRaw: pg_advisory_xact_lock devuelve void y
+      // $queryRaw falla al intentar deserializar la columna ('Failed to deserialize column of type void').
+      await tx.$executeRawUnsafe(`SELECT pg_advisory_xact_lock(hashtext($1))`, auction.currentItemId);
 
       const [user, participant, item] = await Promise.all([
         tx.user.findUnique({

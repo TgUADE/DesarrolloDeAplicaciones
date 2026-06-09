@@ -67,7 +67,18 @@ export const userService = {
         where: { userId },
         skip,
         take,
-        include: { auction: { include: { rematador: true } } },
+        include: {
+          auction: {
+            include: {
+              rematador: true,
+              items: {
+                take: 1,
+                orderBy: { ordenEnSubasta: 'asc' },
+                select: { id: true, images: { take: 1, orderBy: { orden: 'asc' }, select: { url: true } } },
+              },
+            },
+          },
+        },
         orderBy: { joinedAt: 'desc' },
       }),
       prisma.auctionParticipant.count({ where: { userId } }),

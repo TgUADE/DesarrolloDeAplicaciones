@@ -22,3 +22,19 @@ export interface PaymentMethodPayload {
 export async function addPaymentMethod(userId: string, payload: PaymentMethodPayload): Promise<void> {
   await client.post(`/users/${userId}/payment-methods`, payload);
 }
+
+export interface PaymentMethod {
+  id: string;
+  tipo: PaymentMethodType;
+  moneda: 'ARS' | 'USD';
+  verificado: boolean;
+  activo: boolean;
+  banco?: string | null;
+  numeroTarjeta?: string | null;
+}
+
+/** GET /api/users/:id/payment-methods → medios de pago del usuario. */
+export async function listPaymentMethods(userId: string): Promise<PaymentMethod[]> {
+  const res = await client.get(`/users/${userId}/payment-methods`);
+  return res.data.data.paymentMethods as PaymentMethod[];
+}
