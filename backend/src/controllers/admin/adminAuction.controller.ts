@@ -31,6 +31,16 @@ export const adminAuctionController = {
     } catch (err: any) { return serverError(res, err.message); }
   },
 
+  async start(req: Request, res: Response) {
+    try {
+      const auction = await auctionService.startAuction(req.params.id);
+      return ok(res, auction);
+    } catch (err: any) {
+      const status = err.status || 500;
+      return res.status(status).json({ success: false, error: err.message });
+    }
+  },
+
   async closeItem(req: Request, res: Response) {
     try {
       const result = await auctionService.closeItem(req.params.id);
@@ -40,9 +50,6 @@ export const adminAuctionController = {
           closedItemId: result.closedItemId,
           purchase: result.purchase,
         });
-        if (result.nextItem) {
-          io.to(`auction:${req.params.id}`).emit('auction:item-changed', { item: result.nextItem });
-        }
       }
       return ok(res, result);
     } catch (err: any) {

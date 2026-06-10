@@ -33,7 +33,7 @@ import { auctionStatusMeta } from '@/constants/categories';
 import { Brand, FontSize, FontWeight, Radius, space } from '@/constants/theme';
 import { calcMaxBid, calcMinBid } from '@/utils/bid-limits';
 import { getApiErrorMessage } from '@/utils/errors';
-import { formatDate, formatMoney } from '@/utils/format';
+import { formatCountdown, formatDate, formatMoney } from '@/utils/format';
 
 export default function SubastaEnVivo() {
   const router = useRouter();
@@ -54,9 +54,20 @@ export default function SubastaEnVivo() {
   const [placing, setPlacing] = useState(false);
   const [liveConnected, setLiveConnected] = useState(false);
   const [notice, setNotice] = useState('');
+  const [endsAt, setEndsAt] = useState<number | null>(null);
+  const [now, setNow] = useState(Date.now());
 
   const socketRef = useRef<Socket | null>(null);
   const meIdRef = useRef<string | null>(null);
+
+  const toMs = (iso?: string | null) => (iso ? new Date(iso).getTime() : null);
+  const remainingMs = endsAt != null ? endsAt - now : null;
+
+  // Ticker de 1s para la cuenta regresiva.
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, []);
 
   // Mejor oferta vigente (o precio base si no hubo pujas).
   const precioBase = item?.precioBase != null ? Number(item.precioBase) : 0;
@@ -94,6 +105,7 @@ export default function SubastaEnVivo() {
         setAuction(a);
         setItem(current.item);
         setMejorOferta(current.mejorOferta != null ? Number(current.mejorOferta) : null);
+        setEndsAt(toMs(current.endsAt));
         setBids(history);
 
         const verified = pms.filter((p) => p.verificado && p.activo);
@@ -138,6 +150,7 @@ export default function SubastaEnVivo() {
       ]);
       setItem(current.item);
       setMejorOferta(current.mejorOferta != null ? Number(current.mejorOferta) : null);
+      setEndsAt(toMs(current.endsAt));
       setBids(history);
       setMonto('');
       setBidError('');
@@ -155,8 +168,9 @@ export default function SubastaEnVivo() {
         s.emit('join', { auctionId });
       });
       s.on('disconnect', () => setLiveConnected(false));
-      s.on('bid:new', (payload: { puja: Bid; mejorOferta: number }) => {
+      s.on('bid:new', (payload: { puja: Bid; mejorOferta: number; endsAt?: string }) => {
         setMejorOferta(Number(payload.mejorOferta));
+        if (payload.endsAt) setEndsAt(toMs(payload.endsAt));
         setBids((prev) =>
           prev.some((b) => b.id === payload.puja.id) ? prev : [payload.puja, ...prev],
         );
@@ -265,13 +279,29 @@ export default function SubastaEnVivo() {
         </View>
       ) : !item ? (
         <View style={styles.center}>
-          <Text style={styles.muted}>No hay ninguna pieza en remate en este momento.</Text>
+          {notice ? (
+            <View style={styles.notice}>
+              <Text style={styles.noticeText}>{notice}</Text>
+            </View>
+          ) : null}
+          <Text style={styles.notOpen}>Esperando la próxima pieza…</Text>
+          <Text style={styles.muted}>El martillero todavía no inició el siguiente ítem.</Text>
         </View>
       ) : (
         <ScrollView contentContainerStyle={styles.body} showsVerticalScrollIndicator={false}>
           {notice ? (
             <View style={styles.notice}>
               <Text style={styles.noticeText}>{notice}</Text>
+            </View>
+          ) : null}
+
+          {/* Temporizador del ítem */}
+          {remainingMs != null ? (
+            <View style={styles.timerBox}>
+              <Text style={styles.timerLabel}>Cierra en</Text>
+              <Text style={[styles.timerValue, remainingMs <= 30000 && { color: Brand.danger }]}>
+                {remainingMs > 0 ? formatCountdown(remainingMs) : 'Cerrando…'}
+              </Text>
             </View>
           ) : null}
 
@@ -405,6 +435,15 @@ const styles = StyleSheet.create({
     marginBottom: space.md,
   },
   noticeText: { fontSize: FontSize.sm, color: Brand.text, fontWeight: FontWeight.medium },
+  timerBox: {
+    alignItems: 'center',
+    backgroundColor: Brand.primaryDark,
+    borderRadius: Radius.md,
+    paddingVertical: space.sm,
+    marginBottom: space.md,
+  },
+  timerLabel: { fontSize: FontSize.xs, color: 'rgba(255,255,255,0.7)' },
+  timerValue: { fontSize: 26, fontWeight: FontWeight.bold, color: '#fff', fontVariant: ['tabular-nums'] },
   muted: { fontSize: FontSize.xs, color: Brand.textMuted },
   errorText: { color: Brand.danger, fontSize: FontSize.sm, textAlign: 'center' },
   offerCard: {

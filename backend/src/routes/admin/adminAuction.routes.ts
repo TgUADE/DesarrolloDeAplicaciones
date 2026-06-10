@@ -6,6 +6,7 @@ const router = Router();
 router.post('/auctions', adminAuctionController.create);
 router.put('/auctions/:id', adminAuctionController.update);
 router.patch('/auctions/:id/status', adminAuctionController.setStatus);
+router.post('/auctions/:id/start', adminAuctionController.start);
 router.patch('/auctions/:id/items/:itemId/close', adminAuctionController.closeItem);
 router.post('/auctions/:id/items', adminAuctionController.addItem);
 

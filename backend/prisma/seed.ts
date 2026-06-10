@@ -33,6 +33,7 @@ type AuctionSeed = {
   status: AuctionStatus;
   esColeccion?: boolean;
   nombreColeccion?: string;
+  createdById?: string;
   items: ItemSeed[];
 };
 
@@ -129,7 +130,7 @@ async function main() {
   async function seedAuction(a: AuctionSeed, rematadorId: string) {
     const auction = await prisma.auction.upsert({
       where: { id: a.id },
-      update: { status: a.status, fechaHora: a.fechaHora },
+      update: { status: a.status, fechaHora: a.fechaHora, createdById: a.createdById ?? null },
       create: {
         id: a.id,
         titulo: a.titulo,
@@ -141,6 +142,7 @@ async function main() {
         status: a.status,
         esColeccion: a.esColeccion ?? false,
         nombreColeccion: a.nombreColeccion ?? null,
+        createdById: a.createdById ?? null,
         rematadorId,
       },
     });
@@ -150,7 +152,7 @@ async function main() {
       const d = a.items[i];
       const it = await prisma.item.upsert({
         where: { numeroPieza: d.numeroPieza },
-        update: { auctionId: auction.id, status: d.status ?? 'en_subasta', ordenEnSubasta: i + 1 },
+        update: { auctionId: auction.id, status: d.status ?? 'en_subasta', ordenEnSubasta: i + 1, currentOwnerId: admin.id },
         create: {
           numeroPieza: d.numeroPieza,
           descripcion: d.descripcion,
@@ -174,9 +176,17 @@ async function main() {
       created.push(it);
     }
 
-    // Si está abierta, fijar el primer ítem como el que se está rematando
+    // Reset reproducible: limpiar pujas y compras de los ítems de esta subasta.
+    const itemIds = created.map((i) => i.id);
+    await prisma.puja.deleteMany({ where: { itemId: { in: itemIds } } });
+    await prisma.purchase.deleteMany({ where: { itemId: { in: itemIds } } });
+
+    // Si está abierta, fijar el primer ítem como el que se está rematando + arrancar timer (5 min)
     if (a.status === 'abierta' && created.length > 0) {
-      await prisma.auction.update({ where: { id: auction.id }, data: { currentItemId: created[0].id } });
+      await prisma.auction.update({
+        where: { id: auction.id },
+        data: { currentItemId: created[0].id, currentItemEndsAt: new Date(Date.now() + 5 * 60 * 1000) },
+      });
     }
 
     return { auction, items: created };
@@ -205,6 +215,7 @@ async function main() {
         status: 'abierta',
         esColeccion: true,
         nombreColeccion: 'Primavera 2026',
+        createdById: demoUser.id, // creada por el usuario demo (puede iniciar ítems sin ser admin)
         items: [
           { numeroPieza: 'LIV-001', descripcion: 'Set sillas Luis XV (4)', precioBase: 38000 },
           { numeroPieza: 'LIV-002', descripcion: 'Sofá Luis XV tapizado en seda', precioBase: 15200 },
@@ -383,6 +394,16 @@ async function main() {
     });
   }
   console.log('✅ Participaciones del usuario demo');
+
+  // ---------- Favoritos del usuario demo (subastas próximas seguidas) ----------
+  for (const aid of ['auc-up-2', 'auc-up-3']) {
+    await prisma.auctionFavorite.upsert({
+      where: { userId_auctionId: { userId: demoUser.id, auctionId: aid } },
+      update: {},
+      create: { userId: demoUser.id, auctionId: aid },
+    });
+  }
+  console.log('✅ Favoritos del usuario demo');
 
   console.log('\n🎉 Seed completado!');
   console.log('\nCredenciales:');

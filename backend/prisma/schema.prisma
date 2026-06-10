@@ -98,6 +98,10 @@ model User {
   submissions    ItemSubmission[]
   purchases      Purchase[]
   ownedItems     Item[]          @relation("CurrentOwner")
+  createdAuctions Auction[]      @relation("CreatedAuctions")
+  favorites      AuctionFavorite[]
+  registrosComoDuenio  RegistroDeSubasta[] @relation("RegistroDuenio")
+  registrosComoCliente RegistroDeSubasta[] @relation("RegistroCliente")
 
   @@map("users")
 }
@@ -151,14 +155,32 @@ model Auction {
   rematadorId     String
   rematador       Rematador       @relation(fields: [rematadorId], references: [id])
   currentItemId   String?
+  currentItemEndsAt DateTime?
+  createdById     String?
+  creator         User?           @relation("CreatedAuctions", fields: [createdById], references: [id])
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @updatedAt
 
   items        Item[]
   bids         Puja[]
   participants AuctionParticipant[]
+  favorites    AuctionFavorite[]
+  catalogos    Catalogo[]
+  registros    RegistroDeSubasta[]
 
   @@map("auctions")
+}
+
+model AuctionFavorite {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  auctionId String
+  auction   Auction  @relation(fields: [auctionId], references: [id])
+  createdAt DateTime @default(now())
+
+  @@unique([userId, auctionId])
+  @@map("auction_favorites")
 }
 
 model Item {
@@ -188,6 +210,8 @@ model Item {
   submissionId String?        @unique
   submission   ItemSubmission? @relation(fields: [submissionId], references: [id])
   purchase     Purchase?
+  itemsCatalogo ItemCatalogo[]
+  registros     RegistroDeSubasta[]
 
   @@map("items")
 }
@@ -327,4 +351,86 @@ model Purchase {
   updatedAt           DateTime       @updatedAt
 
   @@map("purchases")
+}
+
+model Pais {
+  numero       Int     @id
+  nombre       String
+  nombreCorto  String?
+  capital      String
+  nacionalidad String
+  idiomas      String
+
+  @@map("paises")
+}
+
+model Empleado {
+  id        String   @id @default(cuid())
+  nombre    String
+  apellido  String
+  cargo     String?
+  sectorId  String?
+  sector    Sector?  @relation("EmpleadoSector", fields: [sectorId], references: [id])
+  createdAt DateTime @default(now())
+
+  sectoresACargo Sector[]   @relation("SectorResponsable")
+  catalogos      Catalogo[]
+
+  @@map("empleados")
+}
+
+model Sector {
+  id            String    @id @default(cuid())
+  nombreSector  String
+  codigoSector  String?
+  responsableId String?
+  responsable   Empleado? @relation("SectorResponsable", fields: [responsableId], references: [id])
+
+  empleados Empleado[] @relation("EmpleadoSector")
+
+  @@map("sectores")
+}
+
+model Catalogo {
+  id            String   @id @default(cuid())
+  descripcion   String
+  auctionId     String?
+  auction       Auction? @relation(fields: [auctionId], references: [id])
+  responsableId String
+  responsable   Empleado @relation(fields: [responsableId], references: [id])
+  createdAt     DateTime @default(now())
+
+  items ItemCatalogo[]
+
+  @@map("catalogos")
+}
+
+model ItemCatalogo {
+  id         String   @id @default(cuid())
+  catalogoId String
+  catalogo   Catalogo @relation(fields: [catalogoId], references: [id])
+  itemId     String
+  item       Item     @relation(fields: [itemId], references: [id])
+  precioBase Decimal  @db.Decimal(18, 2)
+  comision   Decimal  @db.Decimal(18, 2)
+  subastado  Boolean  @default(false)
+
+  @@map("items_catalogo")
+}
+
+model RegistroDeSubasta {
+  id        String   @id @default(cuid())
+  auctionId String
+  auction   Auction  @relation(fields: [auctionId], references: [id])
+  itemId    String
+  item      Item     @relation(fields: [itemId], references: [id])
+  duenioId  String
+  duenio    User     @relation("RegistroDuenio", fields: [duenioId], references: [id])
+  clienteId String
+  cliente   User     @relation("RegistroCliente", fields: [clienteId], references: [id])
+  importe   Decimal  @db.Decimal(18, 2)
+  comision  Decimal  @db.Decimal(18, 2)
+  createdAt DateTime @default(now())
+
+  @@map("registro_de_subasta")
 }

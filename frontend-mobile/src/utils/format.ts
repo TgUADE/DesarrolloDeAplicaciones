@@ -29,6 +29,14 @@ export function formatDate(iso?: string | null): string {
   return `${dd} ${mon} · ${hh}:${mm}`;
 }
 
+/** Cuenta regresiva "m:ss" a partir de milisegundos restantes (mínimo 0:00). */
+export function formatCountdown(ms: number): string {
+  const total = Math.max(0, Math.floor(ms / 1000));
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+
 /** True si la fecha ISO cae en el día de hoy (hora local). */
 export function isToday(iso?: string | null): boolean {
   if (!iso) return false;

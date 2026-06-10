@@ -4,9 +4,9 @@ import { useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import type { Auction } from '@/api/auctions';
+import { unfavoriteAuction, type Auction } from '@/api/auctions';
 import { getStoredUser } from '@/api/auth';
-import { getAuctionHistory } from '@/api/users';
+import { getMyAuctions } from '@/api/users';
 import { AuctionCard } from '@/components/ui/auction-card';
 import { Brand, FontSize, FontWeight, Radius, space } from '@/constants/theme';
 import { getApiErrorMessage } from '@/utils/errors';
@@ -31,11 +31,22 @@ export default function MisSubastas() {
         router.replace('/login');
         return;
       }
-      setAuctions(await getAuctionHistory(user.id));
+      setAuctions(await getMyAuctions(user.id));
     } catch (err) {
       setError(getApiErrorMessage(err, 'No se pudo cargar tu historial de subastas.'));
     } finally {
       setLoading(false);
+    }
+  };
+
+  // La estrella en participadas está bloqueada; en favoritas (no participadas) la saca de la lista.
+  const handleUnfollow = async (a: Auction) => {
+    if (a.participating) return;
+    setAuctions((prev) => prev.filter((x) => x.id !== a.id));
+    try {
+      await unfavoriteAuction(a.id);
+    } catch {
+      load(); // revertir si falla
     }
   };
 
@@ -67,6 +78,7 @@ export default function MisSubastas() {
               key={a.id}
               auction={a}
               onPress={() => router.push({ pathname: '/catalog/[auctionId]', params: { auctionId: a.id } })}
+              onToggleStar={() => handleUnfollow(a)}
             />
           ))
         )}

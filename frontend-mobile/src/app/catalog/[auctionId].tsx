@@ -80,6 +80,7 @@ export default function Catalogo() {
                   key={item.id}
                   item={item}
                   moneda={auction?.moneda ?? ''}
+                  currentItemId={auction?.currentItemId}
                   onPress={() =>
                     router.push({
                       pathname: '/item/[itemId]',

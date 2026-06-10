@@ -86,6 +86,45 @@ export const userService = {
     return { auctions: auctions.map(p => p.auction), total, page };
   },
 
+  /** Unión de subastas favoritas y participadas del usuario (para "Mis subastas"). */
+  async getMyAuctions(userId: string) {
+    const cover = {
+      rematador: true,
+      _count: { select: { items: true, participants: true } },
+      items: {
+        take: 1,
+        orderBy: { ordenEnSubasta: 'asc' as const },
+        select: { id: true, images: { take: 1, orderBy: { orden: 'asc' as const }, select: { url: true } } },
+      },
+    };
+
+    const [favorites, participations] = await Promise.all([
+      prisma.auctionFavorite.findMany({
+        where: { userId },
+        include: { auction: { include: cover } },
+        orderBy: { createdAt: 'desc' },
+      }),
+      prisma.auctionParticipant.findMany({
+        where: { userId },
+        include: { auction: { include: cover } },
+        orderBy: { joinedAt: 'desc' },
+      }),
+    ]);
+
+    const partIds = new Set(participations.map((p) => p.auctionId));
+    const byId = new Map<string, any>();
+    // Participaciones primero: estrella bloqueada.
+    for (const p of participations) {
+      byId.set(p.auctionId, { ...p.auction, followed: true, participating: true });
+    }
+    for (const f of favorites) {
+      if (!byId.has(f.auctionId)) {
+        byId.set(f.auctionId, { ...f.auction, followed: true, participating: partIds.has(f.auctionId) });
+      }
+    }
+    return { auctions: Array.from(byId.values()) };
+  },
+
   async getPurchases(userId: string, req: Request) {
     const { skip, limit, page } = getPagination(req);
     const [purchases, total] = await Promise.all([

@@ -58,6 +58,14 @@ export const userController = {
     } catch (err: any) { return serverError(res, err.message); }
   },
 
+  async getMyAuctions(req: Request, res: Response) {
+    try {
+      if (!isSelfOrAdmin(req, req.params.id)) return forbidden(res);
+      const result = await userService.getMyAuctions(req.params.id);
+      return ok(res, result);
+    } catch (err: any) { return serverError(res, err.message); }
+  },
+
   async getPurchases(req: Request, res: Response) {
     try {
       if (!isSelfOrAdmin(req, req.params.id)) return forbidden(res);

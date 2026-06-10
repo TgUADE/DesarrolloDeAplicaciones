@@ -22,10 +22,15 @@ export interface Auction {
   esColeccion: boolean;
   nombreColeccion: string | null;
   currentItemId: string | null;
+  currentItemEndsAt?: string | null;
+  createdById?: string | null;
   rematador?: Rematador;
   _count?: { items: number; participants: number };
   /** Primer ítem (con su primera imagen) para usar como portada. */
   items?: { id: string; images?: { url: string }[] }[];
+  /** Flags por usuario (cuando hay sesión). */
+  followed?: boolean;
+  participating?: boolean;
 }
 
 export interface ItemImage {
@@ -56,14 +61,37 @@ export interface ListAuctionsParams {
   status?: AuctionStatus;
   categoria?: AuctionCategory;
   moneda?: Currency;
+  search?: string;
   page?: number;
   limit?: number;
 }
 
-/** GET /api/auctions → lista de subastas (con rematador y conteos). */
+export interface AuctionListResult {
+  auctions: Auction[];
+  total: number;
+  page: number;
+}
+
+/** GET /api/auctions → lista de subastas (con rematador, conteos y flags del usuario). */
 export async function listAuctions(params: ListAuctionsParams = {}): Promise<Auction[]> {
   const res = await client.get('/auctions', { params });
   return res.data.data.auctions as Auction[];
+}
+
+/** Igual que listAuctions pero devuelve total/page (para paginar el buscador). */
+export async function listAuctionsPaged(params: ListAuctionsParams = {}): Promise<AuctionListResult> {
+  const res = await client.get('/auctions', { params });
+  return res.data.data as AuctionListResult;
+}
+
+/** POST /api/auctions/:id/favorite → seguir (estrella). */
+export async function favoriteAuction(id: string): Promise<void> {
+  await client.post(`/auctions/${id}/favorite`);
+}
+
+/** DELETE /api/auctions/:id/favorite → dejar de seguir (409 si participás). */
+export async function unfavoriteAuction(id: string): Promise<void> {
+  await client.delete(`/auctions/${id}/favorite`);
 }
 
 /** GET /api/auctions/:id → detalle de una subasta. */
@@ -97,14 +125,15 @@ export interface CurrentItem {
   item: Item | null;
   mejorOferta: string | null;
   mejorPostor: { id: string; nombre: string; apellido: string } | null;
+  endsAt: string | null;
 }
 
-/** GET /api/auctions/:id/current-item → ítem en remate + mejor oferta.
+/** GET /api/auctions/:id/current-item → ítem en remate + mejor oferta + endsAt.
  * El back devuelve `null` cuando la subasta no tiene pieza activa; normalizamos. */
 export async function getCurrentItem(auctionId: string): Promise<CurrentItem> {
   const res = await client.get(`/auctions/${auctionId}/current-item`);
   const data = res.data.data as CurrentItem | null;
-  return data ?? { item: null, mejorOferta: null, mejorPostor: null };
+  return data ?? { item: null, mejorOferta: null, mejorPostor: null, endsAt: null };
 }
 
 /** GET /api/auctions/:id/bids → historial de pujas del ítem actual. */

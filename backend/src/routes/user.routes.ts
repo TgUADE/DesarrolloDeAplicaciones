@@ -14,6 +14,7 @@ router.get('/:id/metrics', userController.getMetrics);
 router.get('/:id/messages', userController.getMessages);
 router.put('/:id/messages/:msgId/read', userController.markMessageRead);
 router.get('/:id/auction-history', userController.getAuctionHistory);
+router.get('/:id/my-auctions', userController.getMyAuctions);
 router.get('/:id/purchases', userController.getPurchases);
 router.get('/:id/submissions', submissionController.listMine);
 

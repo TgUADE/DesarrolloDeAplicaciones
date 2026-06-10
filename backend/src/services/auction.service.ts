@@ -7,13 +7,28 @@ import { messageService } from './message.service';
 import { getPagination } from '../utils/pagination';
 import { Request } from 'express';
 
+/** Tiempo máximo de un ítem en remate desde la última puja (60 minutos). */
+export const ITEM_TIMER_MS = 60 * 60 * 1000;
+
 export const auctionService = {
-  async list(req: Request, filters: { status?: AuctionStatus; categoria?: AuctionCategory; moneda?: Currency }) {
+  async list(
+    req: Request,
+    filters: { status?: AuctionStatus; categoria?: AuctionCategory; moneda?: Currency; search?: string },
+    userId?: string,
+  ) {
     const { skip, limit, page } = getPagination(req);
     const where: Record<string, unknown> = {};
     if (filters.status) where.status = filters.status;
     if (filters.categoria) where.categoria = filters.categoria;
     if (filters.moneda) where.moneda = filters.moneda;
+    if (filters.search?.trim()) {
+      const q = filters.search.trim();
+      where.OR = [
+        { titulo: { contains: q, mode: 'insensitive' } },
+        { descripcion: { contains: q, mode: 'insensitive' } },
+        { nombreColeccion: { contains: q, mode: 'insensitive' } },
+      ];
+    }
 
     const [auctions, total] = await Promise.all([
       prisma.auction.findMany({
@@ -33,7 +48,48 @@ export const auctionService = {
       }),
       prisma.auction.count({ where }),
     ]);
-    return { auctions, total, page };
+
+    const withFlags = await this.attachUserFlags(auctions, userId);
+    return { auctions: withFlags, total, page };
+  },
+
+  /** Agrega `followed` (favorito) y `participating` por subasta para el usuario dado. */
+  async attachUserFlags<T extends { id: string }>(auctions: T[], userId?: string) {
+    if (!userId || auctions.length === 0) {
+      return auctions.map((a) => ({ ...a, followed: false, participating: false }));
+    }
+    const ids = auctions.map((a) => a.id);
+    const [favs, parts] = await Promise.all([
+      prisma.auctionFavorite.findMany({ where: { userId, auctionId: { in: ids } }, select: { auctionId: true } }),
+      prisma.auctionParticipant.findMany({ where: { userId, auctionId: { in: ids } }, select: { auctionId: true } }),
+    ]);
+    const favSet = new Set(favs.map((f) => f.auctionId));
+    const partSet = new Set(parts.map((p) => p.auctionId));
+    return auctions.map((a) => ({
+      ...a,
+      participating: partSet.has(a.id),
+      // Participar marca con estrella automáticamente.
+      followed: favSet.has(a.id) || partSet.has(a.id),
+    }));
+  },
+
+  async addFavorite(auctionId: string, userId: string) {
+    const auction = await prisma.auction.findUnique({ where: { id: auctionId } });
+    if (!auction) throw { status: 404, message: 'Subasta no encontrada' };
+    await prisma.auctionFavorite.upsert({
+      where: { userId_auctionId: { userId, auctionId } },
+      create: { userId, auctionId },
+      update: {},
+    });
+  },
+
+  async removeFavorite(auctionId: string, userId: string) {
+    // No se puede dejar de seguir una subasta en la que se participa.
+    const participating = await prisma.auctionParticipant.findFirst({ where: { auctionId, userId } });
+    if (participating) {
+      throw { status: 409, message: 'No podés dejar de seguir una subasta en la que participás' };
+    }
+    await prisma.auctionFavorite.deleteMany({ where: { auctionId, userId } });
   },
 
   async findById(id: string) {
@@ -82,7 +138,12 @@ export const auctionService = {
       include: { user: { select: { id: true, nombre: true, apellido: true } } },
     });
 
-    return { item, mejorOferta: lastBid?.monto ?? null, mejorPostor: lastBid?.user ?? null };
+    return {
+      item,
+      mejorOferta: lastBid?.monto ?? null,
+      mejorPostor: lastBid?.user ?? null,
+      endsAt: auction.currentItemEndsAt,
+    };
   },
 
   async getBids(auctionId: string, req: Request) {
@@ -220,7 +281,11 @@ export const auctionService = {
         data: { confirmada: true },
       });
 
-      return { puja: confirmed, mejorOferta: monto };
+      // Reiniciar el temporizador del ítem: 5 minutos desde esta puja.
+      const endsAt = new Date(Date.now() + ITEM_TIMER_MS);
+      await tx.auction.update({ where: { id: auctionId }, data: { currentItemEndsAt: endsAt } });
+
+      return { puja: confirmed, mejorOferta: monto, endsAt };
     });
   },
 
@@ -274,24 +339,64 @@ export const auctionService = {
         });
       }
 
-      // Find next item
-      const nextItem = await tx.item.findFirst({
-        where: {
-          auctionId,
-          status: 'en_subasta',
-          id: { not: auction.currentItemId },
-          ordenEnSubasta: { gt: item.ordenEnSubasta ?? 0 },
-        },
-        orderBy: { ordenEnSubasta: 'asc' },
-      });
-
+      // No se auto-avanza: el creador/admin inicia el próximo ítem manualmente.
       await tx.auction.update({
         where: { id: auctionId },
-        data: { currentItemId: nextItem?.id ?? null },
+        data: { currentItemId: null, currentItemEndsAt: null },
       });
 
-      return { purchase, nextItem, closedItemId: auction.currentItemId };
+      return { purchase, closedItemId: auction.currentItemId };
     });
+  },
+
+  /** ¿El usuario puede gestionar (iniciar/cerrar ítems de) esta subasta? */
+  canManage(auction: { createdById: string | null }, user: { userId: string; isAdmin?: boolean }) {
+    return !!user.isAdmin || auction.createdById === user.userId;
+  },
+
+  /** Inicia un ítem del catálogo: lo fija como actual y arranca el temporizador. */
+  async startItem(auctionId: string, itemId: string, user: { userId: string; isAdmin?: boolean }) {
+    const auction = await prisma.auction.findUnique({ where: { id: auctionId } });
+    if (!auction) throw { status: 404, message: 'Subasta no encontrada' };
+    if (!this.canManage(auction, user)) {
+      throw { status: 403, message: 'Solo el creador de la subasta o un admin pueden iniciar ítems' };
+    }
+    if (auction.status !== 'abierta') throw { status: 400, message: 'La subasta no está abierta' };
+    if (auction.currentItemId) throw { status: 409, message: 'Ya hay un ítem en remate' };
+
+    const item = await prisma.item.findUnique({ where: { id: itemId } });
+    if (!item || item.auctionId !== auctionId) throw { status: 404, message: 'Ítem no encontrado en la subasta' };
+    if (item.status !== 'en_subasta') throw { status: 400, message: 'El ítem no está disponible para rematar' };
+
+    const endsAt = new Date(Date.now() + ITEM_TIMER_MS);
+    await prisma.auction.update({
+      where: { id: auctionId },
+      data: { currentItemId: itemId, currentItemEndsAt: endsAt },
+    });
+
+    const fullItem = await prisma.item.findUnique({
+      where: { id: itemId },
+      include: { images: { orderBy: { orden: 'asc' } } },
+    });
+    return { item: fullItem, endsAt };
+  },
+
+  /** Cierra los ítems cuyo temporizador venció. Devuelve los cierres para emitir por socket. */
+  async autoCloseExpiredItems() {
+    const expired = await prisma.auction.findMany({
+      where: { status: 'abierta', currentItemId: { not: null }, currentItemEndsAt: { lte: new Date() } },
+      select: { id: true },
+    });
+    const results = [];
+    for (const a of expired) {
+      try {
+        const result = await this.closeItem(a.id);
+        results.push({ auctionId: a.id, ...result });
+      } catch {
+        // si otro proceso ya lo cerró, ignorar
+      }
+    }
+    return results;
   },
 
   async addItem(auctionId: string, itemId: string) {
@@ -337,5 +442,24 @@ export const auctionService = {
     status: AuctionStatus; esColeccion: boolean; nombreColeccion: string; rematadorId: string;
   }>) {
     return prisma.auction.update({ where: { id }, data, include: { rematador: true } });
+  },
+
+  /**
+   * Abre (inicia) una subasta inmediatamente, incluso antes de su `fechaHora`
+   * programada. No hay validación de fecha: el admin/creador puede adelantar el
+   * inicio cuando quiera.
+   */
+  async startAuction(id: string) {
+    const auction = await prisma.auction.findUnique({ where: { id } });
+    if (!auction) throw { status: 404, message: 'Subasta no encontrada' };
+    if (auction.status === 'abierta') throw { status: 409, message: 'La subasta ya está abierta' };
+    if (auction.status === 'cerrada' || auction.status === 'finalizada') {
+      throw { status: 400, message: 'La subasta ya finalizó' };
+    }
+    return prisma.auction.update({
+      where: { id },
+      data: { status: 'abierta' },
+      include: { rematador: true },
+    });
   },
 };

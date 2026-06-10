@@ -6,12 +6,17 @@ import { AuctionCategory, AuctionStatus, Currency } from '@prisma/client';
 export const auctionController = {
   async list(req: Request, res: Response) {
     try {
-      const { status, categoria, moneda } = req.query;
-      const result = await auctionService.list(req, {
-        status: status as AuctionStatus,
-        categoria: categoria as AuctionCategory,
-        moneda: moneda as Currency,
-      });
+      const { status, categoria, moneda, search } = req.query;
+      const result = await auctionService.list(
+        req,
+        {
+          status: status as AuctionStatus,
+          categoria: categoria as AuctionCategory,
+          moneda: moneda as Currency,
+          search: search as string,
+        },
+        req.user?.userId,
+      );
       return ok(res, result);
     } catch (err: any) { return serverError(res, err.message); }
   },
@@ -80,9 +85,47 @@ export const auctionController = {
         io.to(`auction:${req.params.id}`).emit('bid:new', {
           puja: result.puja,
           mejorOferta: result.mejorOferta,
+          endsAt: result.endsAt,
         });
       }
-      return ok(res, { puja: result.puja, mejorOferta: result.mejorOferta }, 201);
+      return ok(res, { puja: result.puja, mejorOferta: result.mejorOferta, endsAt: result.endsAt }, 201);
+    } catch (err: any) {
+      const status = err.status || 500;
+      return res.status(status).json({ success: false, error: err.message });
+    }
+  },
+
+  async favorite(req: Request, res: Response) {
+    try {
+      await auctionService.addFavorite(req.params.id, req.user!.userId);
+      return ok(res, { followed: true });
+    } catch (err: any) {
+      const status = err.status || 500;
+      return res.status(status).json({ success: false, error: err.message });
+    }
+  },
+
+  async unfavorite(req: Request, res: Response) {
+    try {
+      await auctionService.removeFavorite(req.params.id, req.user!.userId);
+      return ok(res, { followed: false });
+    } catch (err: any) {
+      const status = err.status || 500;
+      return res.status(status).json({ success: false, error: err.message });
+    }
+  },
+
+  async startItem(req: Request, res: Response) {
+    try {
+      const result = await auctionService.startItem(req.params.id, req.params.itemId, req.user!);
+      const io = (req.app as any).get('io');
+      if (io) {
+        io.to(`auction:${req.params.id}`).emit('auction:item-changed', {
+          item: result.item,
+          endsAt: result.endsAt,
+        });
+      }
+      return ok(res, result);
     } catch (err: any) {
       const status = err.status || 500;
       return res.status(status).json({ success: false, error: err.message });

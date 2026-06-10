@@ -3,13 +3,22 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import type { Auction } from '@/api/auctions';
 import { Badge } from '@/components/ui/badge';
+import { StarButton } from '@/components/ui/star-button';
 import { categoryMeta } from '@/constants/categories';
 import { Brand, FontSize, FontWeight, Radius, Shadow, space } from '@/constants/theme';
 import { formatDate } from '@/utils/format';
 import { imageUrl } from '@/utils/media';
 
 /** Tarjeta de subasta para los listados (Home "Próximas", Mis subastas). */
-export function AuctionCard({ auction, onPress }: { auction: Auction; onPress?: () => void }) {
+export function AuctionCard({
+  auction,
+  onPress,
+  onToggleStar,
+}: {
+  auction: Auction;
+  onPress?: () => void;
+  onToggleStar?: () => void;
+}) {
   const cat = categoryMeta(auction.categoria);
   const cover = imageUrl(auction.items?.[0]?.images?.[0]?.url);
   return (
@@ -27,7 +36,16 @@ export function AuctionCard({ auction, onPress }: { auction: Auction; onPress?: 
           {formatDate(auction.fechaHora)} · {auction.moneda}
         </Text>
       </View>
-      <Badge label={cat.label} color={cat.color} />
+      <View style={styles.side}>
+        {onToggleStar ? (
+          <StarButton
+            followed={!!auction.followed}
+            locked={!!auction.participating}
+            onToggle={onToggleStar}
+          />
+        ) : null}
+        <Badge label={cat.label} color={cat.color} />
+      </View>
     </Pressable>
   );
 }
@@ -55,4 +73,5 @@ const styles = StyleSheet.create({
   body: { flex: 1, gap: 2 },
   title: { fontSize: FontSize.base, fontWeight: FontWeight.medium, color: Brand.text },
   meta: { fontSize: FontSize.xs, color: Brand.textMuted },
+  side: { alignItems: 'flex-end', gap: space.xs },
 });
