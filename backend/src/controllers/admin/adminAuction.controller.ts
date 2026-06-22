@@ -39,7 +39,13 @@ export const adminAuctionController = {
     try {
       const result = await auctionService.closeItem(parseInt(req.params.id));
       const io = (req.app as any).get('io');
-      if (io) io.to(`auction:${req.params.id}`).emit('item:sold', { closedItemId: result.closedItemId, purchase: result.purchase });
+      if (io) {
+        io.to(`auction:${req.params.id}`).emit('item:sold', {
+          closedItemId: result.closedItemId,
+          winnerId: result.purchase?.clienteId ?? null,
+          nextItemId: result.nextItemId ?? null,
+        });
+      }
       return ok(res, result);
     } catch (err: any) {
       return res.status(err.status || 500).json({ success: false, error: err.message });

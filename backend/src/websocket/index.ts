@@ -23,6 +23,12 @@ export function initWebSocket(httpServer: HttpServer): SocketServer {
     const personaId = parseInt(user.userId);
     console.log(`[WS] User ${personaId} connected`);
 
+    // Ver una subasta sin participar (catálogo): solo se une a la sala para recibir
+    // los avances en vivo (item:sold, auction:item-changed), sin registrarse como postor.
+    socket.on('watch', ({ auctionId }: { auctionId: string }) => {
+      socket.join(`auction:${auctionId}`);
+    });
+
     socket.on('join', async ({ auctionId }: { auctionId: string }) => {
       try {
         const subastaId = parseInt(auctionId);

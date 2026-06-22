@@ -7,7 +7,44 @@ const prisma = new PrismaClient();
 const SYSTEM_EMPLEADO_EMAIL = 'sistema@subastas.com';
 const EMPRESA_CLIENTE_EMAIL = 'empresa@subastas.com';
 const DAY = 24 * 60 * 60 * 1000;
-const FOTO = 'https://picsum.photos/seed';
+
+// Imágenes temáticas (Unsplash, IDs verificados) por número de pieza, para que el
+// catálogo se vea profesional. Cada pieza tiene una galería acorde a su categoría.
+const U = (id: string) => `https://images.unsplash.com/photo-${id}?w=800&q=80&auto=format&fit=crop`;
+const IMG = {
+  artOil: U('1579783902614-a3fb3927b6a5'),
+  artWatercolor: U('1517999144091-3d9dca6d1e43'),
+  artWatercolor2: U('1460661419201-fd4cecdf8a8b'),
+  artSculpture: U('1554907984-15263bfd63bd'),
+  artEngraving: U('1577083552431-6e5fd01aa342'),
+  artEngraving2: U('1578926375605-eaf7559b1458'),
+  antiqueClock: U('1501139083538-0139583c060f'),
+  antiqueChairs: U('1567016432779-094069958ea5'),
+  antiqueMirror: U('1618220179428-22790b461013'),
+  jewelWatch: U('1523275335684-37898b6baf30'),
+  jewelPearls: U('1599643478518-a784e5dc4c8f'),
+  wineRed: U('1510812431401-41d2bd2722f3'),
+  wineWhisky: U('1569529465841-dfecdab7503b'),
+  wineChampagne: U('1510626176961-4b57d4fbad03'),
+};
+// Galería por pieza: la primera es la imagen principal (la que se ve en las cards).
+const FOTOS_POR_PIEZA: Record<string, string[]> = {
+  'A1-001': [IMG.artOil, IMG.artWatercolor, IMG.artSculpture, IMG.artEngraving, IMG.artWatercolor2, IMG.artEngraving2],
+  'A1-002': [IMG.artWatercolor, IMG.artWatercolor2, IMG.artOil, IMG.artSculpture, IMG.artEngraving, IMG.artEngraving2],
+  'A1-003': [IMG.artSculpture, IMG.artOil, IMG.artEngraving, IMG.artWatercolor, IMG.artEngraving2, IMG.artWatercolor2],
+  'A2-001': [IMG.antiqueClock, IMG.antiqueChairs, IMG.antiqueMirror, IMG.antiqueClock, IMG.antiqueChairs, IMG.antiqueMirror],
+  'A2-002': [IMG.antiqueChairs, IMG.antiqueMirror, IMG.antiqueClock, IMG.antiqueChairs, IMG.antiqueMirror, IMG.antiqueClock],
+  'A2-003': [IMG.antiqueMirror, IMG.antiqueClock, IMG.antiqueChairs, IMG.antiqueMirror, IMG.antiqueClock, IMG.antiqueChairs],
+  'A3-001': [IMG.jewelWatch, IMG.jewelPearls, IMG.jewelWatch, IMG.jewelPearls, IMG.jewelWatch, IMG.jewelPearls],
+  'A3-002': [IMG.jewelPearls, IMG.jewelWatch, IMG.jewelPearls, IMG.jewelWatch, IMG.jewelPearls, IMG.jewelWatch],
+  'A4-001': [IMG.wineRed, IMG.wineWhisky, IMG.wineChampagne, IMG.wineRed, IMG.wineWhisky, IMG.wineChampagne],
+  'A4-002': [IMG.wineWhisky, IMG.wineChampagne, IMG.wineRed, IMG.wineWhisky, IMG.wineChampagne, IMG.wineRed],
+  'A4-003': [IMG.wineChampagne, IMG.wineRed, IMG.wineWhisky, IMG.wineChampagne, IMG.wineRed, IMG.wineWhisky],
+  'A5-001': [IMG.artEngraving, IMG.artOil, IMG.artSculpture, IMG.artWatercolor, IMG.artEngraving2, IMG.artWatercolor2],
+};
+// Fallback temático si aparece una pieza sin mapear.
+const FOTOS_FALLBACK = [IMG.artOil, IMG.antiqueClock, IMG.jewelWatch, IMG.wineRed, IMG.artSculpture, IMG.antiqueMirror];
+const fotosDePieza = (numeroPieza: string) => FOTOS_POR_PIEZA[numeroPieza] ?? FOTOS_FALLBACK;
 
 /** Crea/actualiza una Persona core + su PersonaApp (clave natural: email). */
 async function upsertPersona(
@@ -31,6 +68,21 @@ async function upsertEmpleado(email: string, nombre: string, apellido: string, c
   const id = await upsertPersona(email, { nombre, documento: `DOC-${email.split('@')[0]}` }, { apellido, registrationStatus: 'aprobado' });
   await prisma.empleado.upsert({ where: { identificador: id }, create: { identificador: id, cargo, sectorId }, update: { cargo, sectorId } });
   return id;
+}
+
+/**
+ * Resincroniza las secuencias autoincrementales. El seed inserta algunas filas con
+ * `identificador` explícito (subastas y catálogos), lo que NO avanza la secuencia de
+ * Postgres. Sin esto, crear una subasta/catálogo desde la app reusa ids existentes y
+ * falla con "Unique constraint failed on the fields: (identificador)".
+ */
+async function resetSequences() {
+  const tablas = ['personas', 'sectores', 'subastas', 'productos', 'fotos', 'catalogos', 'itemsCatalogo', 'asistentes', 'pujos', 'registroDeSubasta'];
+  for (const t of tablas) {
+    await prisma.$executeRawUnsafe(
+      `SELECT setval(pg_get_serial_sequence('"${t}"', 'identificador'), GREATEST((SELECT COALESCE(MAX(identificador), 0) FROM "${t}"), 1))`,
+    );
+  }
 }
 
 /** Seguro por pieza (consigna: a cada bien recibido se le contrata un seguro según el valor base). */
@@ -118,7 +170,7 @@ async function seedAuction(args: {
           duenioId: args.duenioId,
           revisorId: args.revisorId,
           fotos: {
-            create: Array.from({ length: 6 }, (_, k) => ({ app: { create: { url: `${FOTO}/${pd.numeroPieza}-${k}/600/450`, orden: k } } })),
+            create: fotosDePieza(pd.numeroPieza).map((url, k) => ({ app: { create: { url, orden: k } } })),
           },
           app: {
             create: {
@@ -335,6 +387,8 @@ async function main() {
     });
     console.log('✅ Venta cerrada de ejemplo (compra del usuario demo, pendiente de pago)');
   }
+
+  await resetSequences();
 
   console.log('\n🎉 Seed completado!');
   console.log('\nCredenciales:');

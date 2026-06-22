@@ -1,3 +1,4 @@
+import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -11,7 +12,7 @@ export function ScreenHeader({ title }: { title: string }) {
   return (
     <View style={[styles.header, { paddingTop: insets.top + space.sm }]}>
       <Pressable onPress={() => router.back()} hitSlop={12} style={styles.back}>
-        <Text style={styles.backIcon}>←</Text>
+        <Ionicons name="chevron-back" size={26} color="#ffffff" />
       </Pressable>
       <Text style={styles.title}>{title}</Text>
     </View>
@@ -33,7 +34,6 @@ const styles = StyleSheet.create({
     bottom: space.md - 2,
     zIndex: 1,
   },
-  backIcon: { color: '#ffffff', fontSize: 26, fontWeight: FontWeight.bold },
   title: {
     color: '#ffffff',
     fontSize: FontSize.lg,

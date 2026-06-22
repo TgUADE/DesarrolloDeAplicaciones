@@ -26,12 +26,12 @@ export function ItemCard({
       : null;
 
   const sold = item.status === 'vendido';
-  const isLive = !sold && currentItemId === item.id;
+  const isLive = !sold && currentItemId != null && String(currentItemId) === String(item.id);
 
   return (
     <Pressable
       onPress={onPress}
-      style={({ pressed }) => [styles.card, sold && styles.cardSold, pressed && styles.pressed]}>
+      style={({ pressed }) => [styles.card, isLive && styles.cardLive, sold && styles.cardSold, pressed && styles.pressed]}>
       {thumb ? (
         <Image
           source={{ uri: thumb }}
@@ -48,7 +48,7 @@ export function ItemCard({
           {sold ? (
             <Badge label="Subastado" color={Brand.textMuted} />
           ) : isLive ? (
-            <Badge label="En vivo" color={Brand.danger} />
+            <Badge label="● En remate" color={Brand.danger} />
           ) : null}
         </View>
         <Text style={[styles.title, sold && styles.dimText]} numberOfLines={2}>
@@ -74,6 +74,7 @@ const styles = StyleSheet.create({
     marginBottom: space.sm + 2,
     ...Shadow.card,
   },
+  cardLive: { borderColor: Brand.danger, borderWidth: 2 },
   cardSold: { backgroundColor: Brand.bg },
   pressed: { opacity: 0.85 },
   thumb: { width: 100, alignSelf: 'stretch', minHeight: 100, backgroundColor: Brand.bg },

@@ -16,6 +16,7 @@ export function flattenPersonaLite(p: any) {
   const { app, ...rest } = p;
   return {
     ...rest,
+    id: rest.identificador != null ? String(rest.identificador) : undefined,
     apellido: app?.apellido ?? '',
     ...(app && 'email' in app ? { email: app.email } : {}),
   };

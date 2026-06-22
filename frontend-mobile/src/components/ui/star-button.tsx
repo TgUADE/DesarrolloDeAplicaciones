@@ -1,4 +1,5 @@
-import { Pressable, StyleSheet, Text } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { Pressable, StyleSheet } from 'react-native';
 
 import { Brand } from '@/constants/theme';
 
@@ -20,14 +21,15 @@ export function StarButton({
       disabled={locked}
       hitSlop={10}
       style={styles.btn}>
-      <Text style={[styles.star, { color: followed ? Brand.accent : Brand.textMuted }]}>
-        {followed ? '★' : '☆'}
-      </Text>
+      <Ionicons
+        name={followed ? 'star' : 'star-outline'}
+        size={22}
+        color={followed ? Brand.accent : Brand.textMuted}
+      />
     </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
   btn: { padding: 2 },
-  star: { fontSize: 22, lineHeight: 24 },
 });
