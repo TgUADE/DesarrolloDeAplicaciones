@@ -1,3 +1,4 @@
+import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useState } from 'react';
@@ -108,9 +109,17 @@ export default function MisCompras() {
                 <View style={[styles.line, styles.totalLine]}><Text style={styles.totalLbl}>Total a pagar</Text><Text style={styles.totalVal}>{formatMoney(total(p), cur)}</Text></View>
 
                 <View style={styles.deposito}>
-                  <Text style={styles.depTitle}>📦 Dónde retirar</Text>
+                  <View style={styles.depTitleRow}>
+                    <Ionicons name="cube-outline" size={14} color={Brand.text} />
+                    <Text style={styles.depTitle}>Dónde retirar</Text>
+                  </View>
                   <Text style={styles.depText}>{p.producto?.deposito ?? 'A confirmar'}{p.producto?.ubicacion ? ` · ${p.producto.ubicacion}` : ''}</Text>
-                  {p.producto?.seguro ? <Text style={styles.depText}>🛡 Póliza {p.producto.seguro.nroPoliza}</Text> : null}
+                  {p.producto?.seguro ? (
+                    <View style={styles.depTitleRow}>
+                      <Ionicons name="shield-checkmark-outline" size={13} color={Brand.textMuted} />
+                      <Text style={styles.depText}>Póliza {p.producto.seguro.nroPoliza}</Text>
+                    </View>
+                  ) : null}
                 </View>
 
                 {!p.retiraPersonalmente && p.status !== 'derivado_justicia' ? (
@@ -118,7 +127,10 @@ export default function MisCompras() {
                     <Text style={styles.retireText}>{busy === p.identificador ? '...' : 'Retirar personalmente'}</Text>
                   </Pressable>
                 ) : p.retiraPersonalmente ? (
-                  <Text style={styles.retiradoNote}>✓ Marcado para retiro personal (sin cobertura de seguro)</Text>
+                  <View style={styles.retiradoRow}>
+                    <Ionicons name="checkmark-circle" size={14} color={Brand.textMuted} />
+                    <Text style={styles.retiradoNote}>Marcado para retiro personal (sin cobertura de seguro)</Text>
+                  </View>
                 ) : null}
               </View>
             );
@@ -146,10 +158,12 @@ const styles = StyleSheet.create({
   totalLbl: { fontSize: FontSize.sm, fontWeight: FontWeight.bold, color: Brand.text },
   totalVal: { fontSize: FontSize.base, fontWeight: FontWeight.bold, color: Brand.accent },
   deposito: { marginTop: space.sm, backgroundColor: Brand.bg, borderRadius: Radius.sm, padding: space.sm },
+  depTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 },
   depTitle: { fontSize: FontSize.xs, fontWeight: FontWeight.bold, color: Brand.text },
   depText: { fontSize: FontSize.xs, color: Brand.textMuted, marginTop: 2 },
   retireBtn: { marginTop: space.sm, borderWidth: 1, borderColor: Brand.danger, borderRadius: Radius.sm, paddingVertical: 10, alignItems: 'center' },
   retireText: { color: Brand.danger, fontWeight: FontWeight.medium, fontSize: FontSize.sm },
-  retiradoNote: { marginTop: space.sm, fontSize: FontSize.xs, color: Brand.textMuted, fontStyle: 'italic' },
+  retiradoRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: space.sm },
+  retiradoNote: { flex: 1, fontSize: FontSize.xs, color: Brand.textMuted, fontStyle: 'italic' },
   dim: { opacity: 0.6 },
 });

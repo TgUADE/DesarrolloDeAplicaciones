@@ -339,8 +339,17 @@ export const auctionService = {
         await tx.producto.update({ where: { identificador: itemCatalogo.productoId }, data: { disponible: toSiNo(false), app: { update: { status: 'vendido' } } } });
       }
 
-      await tx.subasta.update({ where: { identificador: subastaId }, data: { app: { update: { currentItemId: null, currentItemEndsAt: null } } } });
-      return { purchase: registro, closedItemId: currentItemId };
+      // Avanzar automáticamente al siguiente ítem disponible del catálogo (uno a la vez).
+      const next = await tx.itemCatalogo.findFirst({
+        where: { catalogo: { subastaId }, app: { status: 'en_subasta' } },
+        orderBy: { app: { ordenEnSubasta: 'asc' } },
+      });
+      const nextEndsAt = next ? new Date(Date.now() + ITEM_TIMER_MS) : null;
+      await tx.subasta.update({
+        where: { identificador: subastaId },
+        data: { app: { update: { currentItemId: next?.identificador ?? null, currentItemEndsAt: nextEndsAt } } },
+      });
+      return { purchase: registro, closedItemId: currentItemId, nextItemId: next?.identificador ?? null };
     });
   },
 
@@ -471,7 +480,17 @@ export const auctionService = {
     if (!subasta) throw { status: 404, message: 'Subasta no encontrada' };
     if (subasta.estado === 'abierta') throw { status: 409, message: 'La subasta ya está abierta' };
     if (subasta.estado === 'cerrada' || subasta.estado === 'finalizada') throw { status: 400, message: 'La subasta ya finalizó' };
-    const s = await prisma.subasta.update({ where: { identificador: id }, data: { estado: 'abierta' }, include: subastaInclude });
+    // Al abrir la subasta arranca automáticamente el primer ítem del catálogo.
+    const first = await prisma.itemCatalogo.findFirst({
+      where: { catalogo: { subastaId: id }, app: { status: 'en_subasta' } },
+      orderBy: { app: { ordenEnSubasta: 'asc' } },
+    });
+    const endsAt = first ? new Date(Date.now() + ITEM_TIMER_MS) : null;
+    const s = await prisma.subasta.update({
+      where: { identificador: id },
+      data: { estado: 'abierta', app: { update: { currentItemId: first?.identificador ?? null, currentItemEndsAt: endsAt } } },
+      include: subastaInclude,
+    });
     return mapSubasta(s);
   },
 };

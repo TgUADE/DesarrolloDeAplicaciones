@@ -1,3 +1,4 @@
+import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
@@ -160,7 +161,11 @@ export default function HomeSubastas() {
               <Text style={styles.headerTitle}>Subastas</Text>
             </View>
             <View style={styles.avatar}>
-              <Text style={styles.avatarText}>{isGuest ? '👤' : initials}</Text>
+              {isGuest ? (
+                <Ionicons name="person" size={20} color="#ffffff" />
+              ) : (
+                <Text style={styles.avatarText}>{initials}</Text>
+              )}
             </View>
           </View>
           {user && !isGuest ? (
@@ -171,7 +176,7 @@ export default function HomeSubastas() {
 
           {/* Buscador */}
           <View style={styles.searchBox}>
-            <Text style={styles.searchIcon}>🔍</Text>
+            <Ionicons name="search" size={16} color="rgba(255,255,255,0.7)" style={styles.searchIcon} />
             <TextInput
               style={styles.searchInput}
               value={query}
@@ -183,7 +188,7 @@ export default function HomeSubastas() {
             />
             {query ? (
               <Pressable onPress={() => setQuery('')} hitSlop={8}>
-                <Text style={styles.searchClear}>✕</Text>
+                <Ionicons name="close-circle" size={18} color="rgba(255,255,255,0.7)" />
               </Pressable>
             ) : null}
           </View>

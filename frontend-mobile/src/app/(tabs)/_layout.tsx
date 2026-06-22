@@ -1,13 +1,18 @@
+import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Tabs, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Text } from 'react-native';
+import type { ColorValue } from 'react-native';
 
 import { getStoredUser } from '@/api/auth';
 import { Brand, FontWeight } from '@/constants/theme';
 
-function TabIcon({ icon, focused }: { icon: string; focused: boolean }) {
-  return <Text style={{ fontSize: 20, opacity: focused ? 1 : 0.45 }}>{icon}</Text>;
+type IoniconName = keyof typeof Ionicons.glyphMap;
+
+// Relleno cuando está activo, contorno cuando no. Usa el color del tab (tint activo/inactivo).
+function TabIcon({ name, focused, color }: { name: IoniconName; focused: boolean; color: ColorValue }) {
+  const icon = (focused ? name : (`${name}-outline` as IoniconName));
+  return <Ionicons name={icon} size={24} color={color} />;
 }
 
 export default function TabsLayout() {
@@ -40,27 +45,27 @@ export default function TabsLayout() {
       {/* Posición 1 — siempre visible */}
       <Tabs.Screen
         name="home"
-        options={{ title: 'Inicio', tabBarIcon: ({ focused }) => <TabIcon icon="🏠" focused={focused} /> }}
+        options={{ title: 'Inicio', tabBarIcon: ({ focused, color }) => <TabIcon name="home" focused={focused} color={color} /> }}
       />
       {/* Posición 2 — espaciador izquierdo en modo invitado */}
       <Tabs.Screen
         name="vender"
-        options={isGuest ? hiddenTab : { title: 'Vender', tabBarIcon: ({ focused }) => <TabIcon icon="➕" focused={focused} /> }}
+        options={isGuest ? hiddenTab : { title: 'Vender', tabBarIcon: ({ focused, color }) => <TabIcon name="add-circle" focused={focused} color={color} /> }}
       />
       {/* Posición 3 — centro */}
       <Tabs.Screen
         name="mis-subastas"
-        options={{ title: 'Subastas', tabBarIcon: ({ focused }) => <TabIcon icon="🔨" focused={focused} /> }}
+        options={{ title: 'Subastas', tabBarIcon: ({ focused, color }) => <TabIcon name="hammer" focused={focused} color={color} /> }}
       />
       {/* Posición 4 — espaciador derecho en modo invitado */}
       <Tabs.Screen
         name="metricas"
-        options={isGuest ? hiddenTab : { title: 'Métricas', tabBarIcon: ({ focused }) => <TabIcon icon="📊" focused={focused} /> }}
+        options={isGuest ? hiddenTab : { title: 'Métricas', tabBarIcon: ({ focused, color }) => <TabIcon name="stats-chart" focused={focused} color={color} /> }}
       />
       {/* Posición 5 — siempre visible */}
       <Tabs.Screen
         name="perfil"
-        options={{ title: 'Perfil', tabBarIcon: ({ focused }) => <TabIcon icon="👤" focused={focused} /> }}
+        options={{ title: 'Perfil', tabBarIcon: ({ focused, color }) => <TabIcon name="person" focused={focused} color={color} /> }}
       />
     </Tabs>
   );

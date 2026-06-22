@@ -1,9 +1,11 @@
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import type { Socket } from 'socket.io-client';
 
 import { getAuction, getCatalog, type Auction, type Item } from '@/api/auctions';
+import { createAuctionSocket } from '@/api/socket';
 import { Badge } from '@/components/ui/badge';
 import { ItemCard } from '@/components/ui/item-card';
 import { ScreenHeader } from '@/components/ui/screen-header';
@@ -19,13 +21,9 @@ export default function Catalogo() {
   const [items, setItems] = useState<Item[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const socketRef = useRef<Socket | null>(null);
 
-  useEffect(() => {
-    if (auctionId) load();
-  }, [auctionId]);
-
-  const load = async () => {
-    setLoading(true);
+  const load = useCallback(async () => {
     setError('');
     try {
       const [a, its] = await Promise.all([getAuction(auctionId), getCatalog(auctionId)]);
@@ -36,7 +34,34 @@ export default function Catalogo() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [auctionId]);
+
+  // Recargar al entrar o volver a la pantalla.
+  useFocusEffect(useCallback(() => { if (auctionId) load(); }, [auctionId, load]));
+
+  // Actualización en vivo: escuchar avances de la subasta (sin registrarse como postor).
+  useEffect(() => {
+    if (!auctionId) return;
+    let active = true;
+    (async () => {
+      try {
+        const s = await createAuctionSocket();
+        socketRef.current = s;
+        const reload = () => { if (active) load(); };
+        s.on('connect', () => s.emit('watch', { auctionId }));
+        s.on('item:sold', reload);
+        s.on('auction:item-changed', reload);
+        s.connect();
+      } catch {
+        // sin sesión / sin token: el catálogo se ve igual, sin actualización en vivo
+      }
+    })();
+    return () => {
+      active = false;
+      socketRef.current?.disconnect();
+      socketRef.current = null;
+    };
+  }, [auctionId, load]);
 
   const cat = auction ? categoryMeta(auction.categoria) : null;
   const status = auction ? auctionStatusMeta(auction.status) : null;
@@ -75,20 +100,22 @@ export default function Catalogo() {
             {items.length === 0 ? (
               <Text style={styles.empty}>Esta subasta todavía no tiene piezas cargadas.</Text>
             ) : (
-              items.map((item) => (
-                <ItemCard
-                  key={item.id}
-                  item={item}
-                  moneda={auction?.moneda ?? ''}
-                  currentItemId={auction?.currentItemId}
-                  onPress={() =>
-                    router.push({
-                      pathname: '/item/[itemId]',
-                      params: { itemId: item.id, moneda: auction?.moneda ?? '' },
-                    })
-                  }
-                />
-              ))
+              items.map((item) => {
+                const isCurrent = auction?.currentItemId != null && String(auction.currentItemId) === String(item.id);
+                return (
+                  <ItemCard
+                    key={item.id}
+                    item={item}
+                    moneda={auction?.moneda ?? ''}
+                    currentItemId={auction?.currentItemId}
+                    onPress={() =>
+                      isCurrent && auction?.status === 'abierta'
+                        ? router.push({ pathname: '/live/[auctionId]', params: { auctionId } })
+                        : router.push({ pathname: '/item/[itemId]', params: { itemId: item.id, moneda: auction?.moneda ?? '' } })
+                    }
+                  />
+                );
+              })
             )}
           </>
         )}

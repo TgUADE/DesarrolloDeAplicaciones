@@ -1,3 +1,4 @@
+import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
@@ -32,7 +33,7 @@ export default function Perfil() {
       <View style={styles.root}>
         <View style={[styles.header, { paddingTop: insets.top + space.lg }]}>
           <View style={styles.avatar}>
-            <Text style={styles.avatarText}>👤</Text>
+            <Ionicons name="person" size={34} color="#ffffff" />
           </View>
           <Text style={styles.name}>Invitado</Text>
           <Text style={styles.email}>Navegando sin cuenta</Text>
@@ -73,8 +74,11 @@ export default function Perfil() {
         <Pressable
           onPress={() => router.push('/mis-compras')}
           style={({ pressed }) => [styles.menuItem, pressed && styles.dim]}>
-          <Text style={styles.menuText}>🧾  Mis compras</Text>
-          <Text style={styles.menuChevron}>›</Text>
+          <View style={styles.menuLeft}>
+            <Ionicons name="receipt-outline" size={20} color={Brand.text} />
+            <Text style={styles.menuText}>Mis compras</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color={Brand.textMuted} />
         </Pressable>
 
         <Pressable
@@ -122,8 +126,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: space.md,
     marginBottom: space.md,
   },
+  menuLeft: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
   menuText: { color: Brand.text, fontSize: FontSize.base, fontWeight: FontWeight.medium },
-  menuChevron: { color: Brand.textMuted, fontSize: FontSize.lg },
   logoutBtn: {
     backgroundColor: Brand.surface,
     borderWidth: 1,

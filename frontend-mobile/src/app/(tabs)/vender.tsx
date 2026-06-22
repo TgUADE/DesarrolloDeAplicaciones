@@ -1,3 +1,4 @@
+import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
@@ -173,16 +174,17 @@ export default function Vender() {
           <TextInput style={styles.input} value={precio} onChangeText={(t) => setPrecio(t.replace(/[^0-9]/g, ''))} placeholder="Ej: 50000" placeholderTextColor={Brand.placeholder} keyboardType="number-pad" />
 
           <Pressable style={styles.check} onPress={() => setDeclaracion((v) => !v)}>
-            <View style={[styles.box, declaracion && styles.boxOn]}>{declaracion ? <Text style={styles.tick}>✓</Text> : null}</View>
+            <View style={[styles.box, declaracion && styles.boxOn]}>{declaracion ? <Ionicons name="checkmark" size={14} color="#fff" /> : null}</View>
             <Text style={styles.checkText}>Declaro que el bien me pertenece y no tiene impedimentos para subastarse.</Text>
           </Pressable>
           <Pressable style={styles.check} onPress={() => setOrigen((v) => !v)}>
-            <View style={[styles.box, origen && styles.boxOn]}>{origen ? <Text style={styles.tick}>✓</Text> : null}</View>
+            <View style={[styles.box, origen && styles.boxOn]}>{origen ? <Ionicons name="checkmark" size={14} color="#fff" /> : null}</View>
             <Text style={styles.checkText}>Declaro el origen lícito del bien y puedo acreditarlo si me lo requieren.</Text>
           </Pressable>
 
           <Pressable style={styles.fotoBtn} onPress={pickImages}>
-            <Text style={styles.fotoBtnText}>📷 Agregar fotos ({images.length}/{MIN_FOTOS}+)</Text>
+            <Ionicons name="camera-outline" size={18} color={Brand.primary} />
+            <Text style={styles.fotoBtnText}>Agregar fotos ({images.length}/{MIN_FOTOS}+)</Text>
           </Pressable>
           {images.length > 0 ? (
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: space.sm }}>
@@ -190,7 +192,7 @@ export default function Vender() {
                 <View key={i} style={styles.thumbWrap}>
                   <Image source={{ uri: `data:image/jpeg;base64,${b64}` }} style={styles.thumb} contentFit="cover" />
                   <Pressable style={styles.thumbX} onPress={() => setImages((prev) => prev.filter((_, k) => k !== i))} hitSlop={8}>
-                    <Text style={styles.thumbXText}>✕</Text>
+                    <Ionicons name="close" size={13} color="#fff" />
                   </Pressable>
                 </View>
               ))}
@@ -255,11 +257,20 @@ export default function Vender() {
                   <Text style={styles.subDesc} numberOfLines={1}>{p.descripcionCompleta}</Text>
                   <Badge label={p.disponible === false ? 'Vendida' : (p.status ?? 'en depósito')} color={p.disponible === false ? Brand.textMuted : Brand.primary} />
                 </View>
-                <Text style={styles.subMeta}>📦 Depósito: {p.deposito ?? '—'}{p.ubicacion ? ` · ${p.ubicacion}` : ''}</Text>
+                <View style={styles.metaRow}>
+                  <Ionicons name="cube-outline" size={13} color={Brand.textMuted} />
+                  <Text style={styles.subMeta}>Depósito: {p.deposito ?? '—'}{p.ubicacion ? ` · ${p.ubicacion}` : ''}</Text>
+                </View>
                 {p.seguro ? (
-                  <Text style={styles.subMeta}>🛡 Póliza {p.seguro.nroPoliza} — {p.seguro.compania}</Text>
+                  <View style={styles.metaRow}>
+                    <Ionicons name="shield-checkmark-outline" size={13} color={Brand.textMuted} />
+                    <Text style={styles.subMeta}>Póliza {p.seguro.nroPoliza} — {p.seguro.compania}</Text>
+                  </View>
                 ) : (
-                  <Text style={styles.subMeta}>🛡 Sin póliza asignada</Text>
+                  <View style={styles.metaRow}>
+                    <Ionicons name="shield-outline" size={13} color={Brand.textMuted} />
+                    <Text style={styles.subMeta}>Sin póliza asignada</Text>
+                  </View>
                 )}
               </View>
             ))}
@@ -289,7 +300,7 @@ const styles = StyleSheet.create({
   boxOn: { backgroundColor: Brand.primary },
   tick: { color: '#fff', fontSize: 13, fontWeight: FontWeight.bold },
   checkText: { flex: 1, fontSize: FontSize.xs, color: Brand.textMuted, lineHeight: 18 },
-  fotoBtn: { borderWidth: 1, borderColor: Brand.primary, borderRadius: Radius.sm, paddingVertical: 12, alignItems: 'center', marginTop: space.sm },
+  fotoBtn: { flexDirection: 'row', gap: 8, borderWidth: 1, borderColor: Brand.primary, borderRadius: Radius.sm, paddingVertical: 12, alignItems: 'center', justifyContent: 'center', marginTop: space.sm },
   fotoBtnText: { color: Brand.primary, fontWeight: FontWeight.medium, fontSize: FontSize.sm },
   thumbWrap: { marginRight: space.sm },
   thumb: { width: 64, height: 64, borderRadius: Radius.sm, backgroundColor: Brand.bg },
@@ -305,6 +316,7 @@ const styles = StyleSheet.create({
   rowBetween: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: space.sm },
   subDesc: { flex: 1, fontSize: FontSize.sm, fontWeight: FontWeight.medium, color: Brand.text },
   subMeta: { fontSize: FontSize.xs, color: Brand.textMuted },
+  metaRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 3 },
   actionRow: { flexDirection: 'row', gap: space.sm, marginTop: space.sm },
   actionBtn: { flex: 1, borderRadius: Radius.sm, paddingVertical: 10, alignItems: 'center' },
   actionText: { color: '#fff', fontWeight: FontWeight.bold, fontSize: FontSize.sm },

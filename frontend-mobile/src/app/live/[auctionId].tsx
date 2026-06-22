@@ -57,9 +57,11 @@ export default function SubastaEnVivo() {
   const [notice, setNotice] = useState('');
   const [endsAt, setEndsAt] = useState<number | null>(null);
   const [now, setNow] = useState(Date.now());
+  const [won, setWon] = useState<{ piece: string } | null>(null);
 
   const socketRef = useRef<Socket | null>(null);
   const meIdRef = useRef<string | null>(null);
+  const itemRef = useRef<Item | null>(null);
 
   const toMs = (iso?: string | null) => (iso ? new Date(iso).getTime() : null);
   const remainingMs = endsAt != null ? endsAt - now : null;
@@ -69,6 +71,11 @@ export default function SubastaEnVivo() {
     const t = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(t);
   }, []);
+
+  // Mantener una referencia al ítem actual (para saber qué pieza gané en el evento del socket).
+  useEffect(() => {
+    itemRef.current = item;
+  }, [item]);
 
   // Mejor oferta vigente (o precio base si no hubo pujas).
   const precioBase = item?.precioBase != null ? Number(item.precioBase) : 0;
@@ -190,13 +197,12 @@ export default function SubastaEnVivo() {
         );
       });
       // Pieza adjudicada (cerrada por el martillero).
-      s.on('item:sold', (payload: { closedItemId: string; purchase: { buyerId: string } | null }) => {
-        if (!payload.purchase) {
-          setNotice('La pieza cerró sin pujas.');
-        } else if (payload.purchase.buyerId === meIdRef.current) {
-          setNotice('🎉 ¡Ganaste esta pieza! Revisá el resumen de compra.');
+      s.on('item:sold', (payload: { closedItemId: string; winnerId?: number | string | null; nextItemId?: number | null }) => {
+        if (payload.winnerId != null && String(payload.winnerId) === meIdRef.current) {
+          // Gané la pieza → pantalla de ganador.
+          setWon({ piece: itemRef.current?.descripcion ?? 'la pieza' });
         } else {
-          setNotice('La pieza fue adjudicada a otro postor.');
+          setNotice('Se adjudicó la pieza anterior.');
         }
         refreshCurrent();
       });
@@ -253,6 +259,36 @@ export default function SubastaEnVivo() {
 
   const status = auction ? auctionStatusMeta(auction.status) : null;
 
+  if (won) {
+    return (
+      <View style={styles.root}>
+        <StatusBar style="light" />
+        <View style={[styles.header, { paddingTop: insets.top + space.sm }]}>
+          <View style={styles.headerTop}>
+            <Pressable onPress={() => router.back()} hitSlop={12}>
+              <Text style={styles.back}>←</Text>
+            </Pressable>
+            <Text style={styles.headerTitle}>Subasta en vivo</Text>
+          </View>
+        </View>
+        <View style={styles.wonWrap}>
+          <Text style={styles.wonEmoji}>🎉</Text>
+          <Text style={styles.wonTitle}>¡Ganaste la subasta!</Text>
+          <Text style={styles.wonPiece}>{won.piece}</Text>
+          <Text style={styles.wonMsg}>
+            Te adjudicaste la pieza. Te va a llegar el detalle del pago (oferta, comisiones y envío) en "Mis compras".
+          </Text>
+          <Pressable onPress={() => { setWon(null); refreshCurrent(); }} style={({ pressed }) => [styles.wonPrimary, pressed && styles.dim]}>
+            <Text style={styles.wonPrimaryText}>Volver a la subasta</Text>
+          </Pressable>
+          <Pressable onPress={() => { setWon(null); router.push('/mis-compras'); }} style={({ pressed }) => [styles.wonSecondary, pressed && styles.dim]}>
+            <Text style={styles.wonSecondaryText}>Ir a la compra</Text>
+          </Pressable>
+        </View>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.root}>
       <StatusBar style="light" />
@@ -302,7 +338,8 @@ export default function SubastaEnVivo() {
           <Text style={styles.muted}>El martillero todavía no inició el siguiente ítem.</Text>
         </View>
       ) : (
-        <ScrollView contentContainerStyle={styles.body} showsVerticalScrollIndicator={false}>
+        <View style={styles.liveBody}>
+        <ScrollView style={styles.scrollArea} contentContainerStyle={styles.body} showsVerticalScrollIndicator={false}>
           {notice ? (
             <View style={styles.notice}>
               <Text style={styles.noticeText}>{notice}</Text>
@@ -420,10 +457,14 @@ export default function SubastaEnVivo() {
             })
           )}
 
-          <Pressable onPress={abandonar} style={({ pressed }) => [styles.abandonBtn, pressed && styles.dim]}>
-            <Text style={styles.abandonText}>Abandonar</Text>
-          </Pressable>
         </ScrollView>
+
+          <View style={styles.footer}>
+            <Pressable onPress={abandonar} style={({ pressed }) => [styles.abandonBtn, pressed && styles.dim]}>
+              <Text style={styles.abandonText}>Abandonar</Text>
+            </Pressable>
+          </View>
+        </View>
       )}
     </View>
   );
@@ -546,8 +587,17 @@ const styles = StyleSheet.create({
   bidAvatarText: { fontSize: 10, fontWeight: FontWeight.bold, color: Brand.textMuted },
   bidName: { fontSize: FontSize.sm, color: Brand.text },
   bidAmount: { fontSize: FontSize.sm, fontWeight: FontWeight.bold, color: Brand.text },
+  liveBody: { flex: 1 },
+  scrollArea: { flex: 1 },
+  footer: {
+    paddingHorizontal: space.md,
+    paddingTop: space.sm,
+    paddingBottom: space.md,
+    borderTopWidth: 1,
+    borderTopColor: Brand.border,
+    backgroundColor: Brand.pageBg,
+  },
   abandonBtn: {
-    marginTop: space.xl,
     borderRadius: Radius.sm,
     borderWidth: 1,
     borderColor: Brand.danger,
@@ -556,4 +606,13 @@ const styles = StyleSheet.create({
   },
   abandonText: { color: Brand.danger, fontSize: FontSize.sm, fontWeight: FontWeight.medium },
   dim: { opacity: 0.5 },
+  wonWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: space.xl, gap: space.sm },
+  wonEmoji: { fontSize: 56 },
+  wonTitle: { fontSize: FontSize.xl, fontWeight: FontWeight.bold, color: Brand.primary },
+  wonPiece: { fontSize: FontSize.base, fontWeight: FontWeight.medium, color: Brand.text, textAlign: 'center' },
+  wonMsg: { fontSize: FontSize.sm, color: Brand.textMuted, textAlign: 'center', marginBottom: space.lg, paddingHorizontal: space.md, lineHeight: 20 },
+  wonPrimary: { backgroundColor: Brand.primary, borderRadius: Radius.sm, paddingVertical: 14, paddingHorizontal: space.xl, alignItems: 'center', width: '100%' },
+  wonPrimaryText: { color: '#fff', fontSize: FontSize.base, fontWeight: FontWeight.bold },
+  wonSecondary: { backgroundColor: Brand.surface, borderWidth: 1, borderColor: Brand.border, borderRadius: Radius.sm, paddingVertical: 12, paddingHorizontal: space.xl, alignItems: 'center', width: '100%' },
+  wonSecondaryText: { color: Brand.text, fontSize: FontSize.base, fontWeight: FontWeight.medium },
 });
