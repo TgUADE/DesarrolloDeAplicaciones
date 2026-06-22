@@ -10,7 +10,7 @@ export const paymentMethodController = {
   async list(req: Request, res: Response) {
     try {
       if (!isSelf(req, req.params.id)) return forbidden(res);
-      const pms = await paymentMethodService.list(req.params.id);
+      const pms = await paymentMethodService.list(parseInt(req.params.id));
       return ok(res, { paymentMethods: pms });
     } catch (err: any) { return serverError(res, err.message); }
   },
@@ -18,7 +18,7 @@ export const paymentMethodController = {
   async create(req: Request, res: Response) {
     try {
       if (!isSelf(req, req.params.id)) return forbidden(res);
-      const pm = await paymentMethodService.create(req.params.id, req.body);
+      const pm = await paymentMethodService.create(parseInt(req.params.id), req.body);
       return created(res, pm);
     } catch (err: any) {
       const status = err.status || 500;
@@ -29,7 +29,7 @@ export const paymentMethodController = {
   async update(req: Request, res: Response) {
     try {
       if (!isSelf(req, req.params.id)) return forbidden(res);
-      const pm = await paymentMethodService.update(req.params.pmId, req.params.id, req.body);
+      const pm = await paymentMethodService.update(req.params.pmId, parseInt(req.params.id), req.body);
       return ok(res, pm);
     } catch (err: any) {
       const status = err.status || 500;
@@ -40,7 +40,7 @@ export const paymentMethodController = {
   async remove(req: Request, res: Response) {
     try {
       if (!isSelf(req, req.params.id)) return forbidden(res);
-      await paymentMethodService.remove(req.params.pmId, req.params.id);
+      await paymentMethodService.remove(req.params.pmId, parseInt(req.params.id));
       return ok(res, { message: 'Medio de pago eliminado' });
     } catch (err: any) {
       const status = err.status || 500;

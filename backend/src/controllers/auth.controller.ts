@@ -6,7 +6,6 @@ import { verifyRefreshToken, signAccessToken, signRefreshToken } from '../utils/
 import { ok, created, badRequest, unauthorized, serverError } from '../utils/apiResponse';
 import { env } from '../config/env';
 
-/** Guarda una imagen en base64 (con o sin prefijo data URI) y devuelve su URL pública. */
 function saveBase64Image(base64: string, prefix: string): string {
   const dir = path.join(env.UPLOAD_DIR, 'documents');
   fs.mkdirSync(dir, { recursive: true });
@@ -32,11 +31,8 @@ export const authController = {
       if (!nombre || !apellido || !domicilioLegal || !paisOrigen || !email) {
         return badRequest(res, 'Nombre, apellido, domicilio legal, país de origen y email son obligatorios');
       }
-      if (!isValidEmail(email)) {
-        return badRequest(res, 'Email inválido');
-      }
+      if (!isValidEmail(email)) return badRequest(res, 'Email inválido');
 
-      // Acepta las fotos del documento por multipart (web) o por base64 en JSON (mobile).
       const files = req.files as { [fieldname: string]: Express.Multer.File[] } | undefined;
       let docFrenteUrl: string;
       let docDorsoUrl: string;
@@ -50,11 +46,10 @@ export const authController = {
         return badRequest(res, 'Se requieren fotos del documento (frente y dorso)');
       }
 
-      const user = await authService.registerStage1({ nombre, apellido, docFrenteUrl, docDorsoUrl, domicilioLegal, paisOrigen, email });
-      return created(res, { id: user.id, nombre: user.nombre, apellido: user.apellido, status: user.status });
+      const persona = await authService.registerStage1({ nombre, apellido, docFrenteUrl, docDorsoUrl, domicilioLegal, paisOrigen, email });
+      return created(res, { id: persona.identificador.toString(), nombre: persona.nombre, apellido: persona.app?.apellido ?? '', status: persona.app?.registrationStatus ?? 'pendiente' });
     } catch (err: any) {
-      const status = err.status || 500;
-      return res.status(status).json({ success: false, error: err.message });
+      return res.status(err.status || 500).json({ success: false, error: err.message });
     }
   },
 
@@ -62,37 +57,19 @@ export const authController = {
     try {
       const token = String(req.body.token ?? '').trim();
       const password = String(req.body.password ?? '');
-      if (!token || !password) {
-        return badRequest(res, 'Token y contraseña son obligatorios');
-      }
-      if (String(password).length < 8) {
-        return badRequest(res, 'La contraseña debe tener al menos 8 caracteres');
-      }
-      const user = await authService.completeRegistration(token, password);
-      const payload = { userId: user.id, isAdmin: user.isAdmin };
+      if (!token || !password) return badRequest(res, 'Token y contraseña son obligatorios');
+      if (password.length < 8) return badRequest(res, 'La contraseña debe tener al menos 8 caracteres');
+      const persona = await authService.completeRegistration(token, password);
+      const payload = { userId: persona.identificador.toString(), isAdmin: persona.app?.isAdmin ?? false };
       const accessToken = signAccessToken(payload);
       const refreshToken = signRefreshToken(payload);
-      res.cookie('refreshToken', refreshToken, {
-        httpOnly: true,
-        secure: env.NODE_ENV === 'production',
-        sameSite: 'strict',
-        maxAge: 7 * 24 * 60 * 60 * 1000,
-      });
+      res.cookie('refreshToken', refreshToken, { httpOnly: true, secure: env.NODE_ENV === 'production', sameSite: 'strict', maxAge: 7 * 24 * 60 * 60 * 1000 });
       return ok(res, {
         accessToken,
-        user: {
-          id: user.id,
-          nombre: user.nombre,
-          apellido: user.apellido,
-          email: user.email,
-          categoria: user.categoria,
-          status: user.status,
-          isAdmin: user.isAdmin,
-        },
+        user: { id: persona.identificador.toString(), nombre: persona.nombre, apellido: persona.app?.apellido ?? '', email: persona.app?.email ?? null, status: persona.app?.registrationStatus ?? 'aprobado', isAdmin: persona.app?.isAdmin ?? false },
       });
     } catch (err: any) {
-      const status = err.status || 500;
-      return res.status(status).json({ success: false, error: err.message });
+      return res.status(err.status || 500).json({ success: false, error: err.message });
     }
   },
 
@@ -103,20 +80,14 @@ export const authController = {
       if (!email || !password) return badRequest(res, 'Email y contraseña son obligatorios');
       if (!isValidEmail(email)) return badRequest(res, 'Email inválido');
       const result = await authService.login(email, password);
-      res.cookie('refreshToken', result.refreshToken, {
-        httpOnly: true,
-        secure: env.NODE_ENV === 'production',
-        sameSite: 'strict',
-        maxAge: 7 * 24 * 60 * 60 * 1000,
-      });
+      res.cookie('refreshToken', result.refreshToken, { httpOnly: true, secure: env.NODE_ENV === 'production', sameSite: 'strict', maxAge: 7 * 24 * 60 * 60 * 1000 });
       return ok(res, { accessToken: result.accessToken, user: result.user });
     } catch (err: any) {
-      const status = err.status || 500;
-      return res.status(status).json({ success: false, error: err.message });
+      return res.status(err.status || 500).json({ success: false, error: err.message });
     }
   },
 
-  async logout(req: Request, res: Response) {
+  async logout(_req: Request, res: Response) {
     res.clearCookie('refreshToken');
     return ok(res, { message: 'Sesión cerrada' });
   },
@@ -124,12 +95,21 @@ export const authController = {
   async me(req: Request, res: Response) {
     try {
       const { prisma } = await import('../config/prisma');
-      const user = await prisma.user.findUnique({
-        where: { id: req.user!.userId },
-        select: { id: true, nombre: true, apellido: true, email: true, categoria: true, status: true, isAdmin: true, createdAt: true },
+      const persona = await prisma.persona.findUnique({
+        where: { identificador: parseInt(req.user!.userId) },
+        include: { cliente: true, app: true },
       });
-      if (!user) return unauthorized(res);
-      return ok(res, user);
+      if (!persona) return unauthorized(res);
+      return ok(res, {
+        id: persona.identificador.toString(),
+        nombre: persona.nombre,
+        apellido: persona.app?.apellido ?? '',
+        email: persona.app?.email ?? null,
+        categoria: persona.cliente?.categoria ?? 'comun',
+        status: persona.app?.registrationStatus ?? 'pendiente',
+        isAdmin: persona.app?.isAdmin ?? false,
+        createdAt: persona.app?.createdAt ?? null,
+      });
     } catch (err: any) {
       return serverError(res, err.message);
     }

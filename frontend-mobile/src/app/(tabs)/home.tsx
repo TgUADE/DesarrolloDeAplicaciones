@@ -12,7 +12,7 @@ import {
   unfavoriteAuction,
   type Auction,
 } from '@/api/auctions';
-import { getStoredUser, type AuthUser } from '@/api/auth';
+import { getStoredUser, isGuestSession, type AuthUser } from '@/api/auth';
 import { AuctionCard } from '@/components/ui/auction-card';
 import { Badge } from '@/components/ui/badge';
 import { StarButton } from '@/components/ui/star-button';
@@ -23,11 +23,16 @@ import { formatDate, isToday } from '@/utils/format';
 import { imageUrl } from '@/utils/media';
 
 type Filter = 'todas' | 'hoy' | 'proximas';
-const PILLS: { key: Filter | 'mis'; label: string }[] = [
+const PILLS_AUTH: { key: Filter | 'mis'; label: string }[] = [
   { key: 'todas', label: 'Todas' },
   { key: 'hoy', label: 'Hoy' },
   { key: 'proximas', label: 'Próximas' },
   { key: 'mis', label: 'Mis subastas' },
+];
+const PILLS_GUEST: { key: Filter | 'mis'; label: string }[] = [
+  { key: 'todas', label: 'Todas' },
+  { key: 'hoy', label: 'Hoy' },
+  { key: 'proximas', label: 'Próximas' },
 ];
 const PAGE_SIZE = 10;
 
@@ -35,6 +40,7 @@ export default function HomeSubastas() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const [user, setUser] = useState<AuthUser | null>(null);
+  const [isGuest, setIsGuest] = useState(false);
   const [auctions, setAuctions] = useState<Auction[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -50,6 +56,7 @@ export default function HomeSubastas() {
 
   useEffect(() => {
     getStoredUser().then(setUser);
+    isGuestSession().then(setIsGuest);
     load();
   }, []);
 
@@ -108,14 +115,14 @@ export default function HomeSubastas() {
   };
 
   const toggleStar = async (a: Auction) => {
-    if (a.participating) return; // bloqueada
+    if (isGuest || a.participating) return;
     const next = !a.followed;
     patchAuction(a.id, { followed: next });
     try {
       if (next) await favoriteAuction(a.id);
       else await unfavoriteAuction(a.id);
     } catch {
-      patchAuction(a.id, { followed: !next }); // revertir
+      patchAuction(a.id, { followed: !next });
     }
   };
 
@@ -129,6 +136,7 @@ export default function HomeSubastas() {
   const upcoming = auctions.filter((a) => a.status === 'programada' && matchesFilter(a));
   const showLive = filter !== 'proximas';
 
+  const PILLS = isGuest ? PILLS_GUEST : PILLS_AUTH;
   const initials = user ? `${user.nombre?.[0] ?? ''}${user.apellido?.[0] ?? ''}`.toUpperCase() : '';
   const cat = categoryMeta(user?.categoria);
 
@@ -148,14 +156,14 @@ export default function HomeSubastas() {
         <View style={[styles.header, { paddingTop: insets.top + space.sm }]}>
           <View style={styles.headerTop}>
             <View>
-              <Text style={styles.hello}>Hola, {user?.nombre ?? ''}</Text>
+              <Text style={styles.hello}>Hola{user?.nombre ? `, ${user.nombre}` : ''}</Text>
               <Text style={styles.headerTitle}>Subastas</Text>
             </View>
             <View style={styles.avatar}>
-              <Text style={styles.avatarText}>{initials}</Text>
+              <Text style={styles.avatarText}>{isGuest ? '👤' : initials}</Text>
             </View>
           </View>
-          {user ? (
+          {user && !isGuest ? (
             <View style={styles.catWrap}>
               <Badge label={`Categoría: ${cat.label}`} color={Brand.accent} />
             </View>
@@ -207,7 +215,7 @@ export default function HomeSubastas() {
                   {total} resultado{total === 1 ? '' : 's'}
                 </Text>
                 {results.map((a) => (
-                  <AuctionCard key={a.id} auction={a} onPress={() => openAuction(a)} onToggleStar={() => toggleStar(a)} />
+                  <AuctionCard key={a.id} auction={a} onPress={() => openAuction(a)} onToggleStar={isGuest ? undefined : () => toggleStar(a)} />
                 ))}
                 {results.length < total ? (
                   <Pressable onPress={loadMore} style={styles.loadMore}>
@@ -238,7 +246,7 @@ export default function HomeSubastas() {
                         key={a.id}
                         auction={a}
                         onPress={() => router.push({ pathname: '/live/[auctionId]', params: { auctionId: a.id } })}
-                        onToggleStar={() => toggleStar(a)}
+                        onToggleStar={isGuest ? undefined : () => toggleStar(a)}
                       />
                     ))
                   )}
@@ -254,7 +262,7 @@ export default function HomeSubastas() {
                     key={a.id}
                     auction={a}
                     onPress={() => router.push({ pathname: '/catalog/[auctionId]', params: { auctionId: a.id } })}
-                    onToggleStar={() => toggleStar(a)}
+                    onToggleStar={isGuest ? undefined : () => toggleStar(a)}
                   />
                 ))
               )}

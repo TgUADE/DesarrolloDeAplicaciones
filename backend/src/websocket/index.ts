@@ -5,20 +5,13 @@ import { prisma } from '../config/prisma';
 import { env } from '../config/env';
 
 export function initWebSocket(httpServer: HttpServer): SocketServer {
-  const io = new SocketServer(httpServer, {
-    cors: {
-      origin: env.FRONTEND_URL,
-      credentials: true,
-    },
-  });
+  const io = new SocketServer(httpServer, { cors: { origin: env.FRONTEND_URL, credentials: true } });
 
-  // JWT auth middleware
   io.use((socket: Socket, next) => {
     const token = socket.handshake.auth?.token as string;
     if (!token) return next(new Error('No token provided'));
     try {
-      const payload = verifyAccessToken(token);
-      (socket as any).user = payload;
+      (socket as any).user = verifyAccessToken(token);
       next();
     } catch {
       next(new Error('Invalid token'));
@@ -27,28 +20,29 @@ export function initWebSocket(httpServer: HttpServer): SocketServer {
 
   io.on('connection', (socket: Socket) => {
     const user = (socket as any).user;
-    console.log(`[WS] User ${user.userId} connected`);
+    const personaId = parseInt(user.userId);
+    console.log(`[WS] User ${personaId} connected`);
 
     socket.on('join', async ({ auctionId }: { auctionId: string }) => {
       try {
-        await prisma.auctionParticipant.upsert({
-          where: { auctionId_userId: { auctionId, userId: user.userId } },
-          create: { auctionId, userId: user.userId, isActive: true },
-          update: { isActive: true, joinedAt: new Date(), leftAt: null },
+        const subastaId = parseInt(auctionId);
+        const count = await prisma.asistente.count({ where: { subastaId } });
+        await prisma.asistente.upsert({
+          where: { subastaId_clienteId: { subastaId, clienteId: personaId } },
+          create: { subastaId, clienteId: personaId, numeroPostor: count + 1, app: { create: { isActive: true } } },
+          update: { app: { upsert: { create: { isActive: true }, update: { isActive: true, joinedAt: new Date(), leftAt: null } } } },
         });
         socket.join(`auction:${auctionId}`);
         (socket as any).currentAuction = auctionId;
-        console.log(`[WS] User ${user.userId} joined auction ${auctionId}`);
-      } catch (err) {
+        console.log(`[WS] User ${personaId} joined auction ${auctionId}`);
+      } catch {
         socket.emit('error', { message: 'No se pudo unir a la subasta' });
       }
     });
 
     socket.on('leave', async ({ auctionId }: { auctionId: string }) => {
-      await prisma.auctionParticipant.updateMany({
-        where: { auctionId, userId: user.userId },
-        data: { isActive: false, leftAt: new Date() },
-      });
+      const subastaId = parseInt(auctionId);
+      await prisma.asistenteApp.updateMany({ where: { asistente: { subastaId, clienteId: personaId } }, data: { isActive: false, leftAt: new Date() } });
       socket.leave(`auction:${auctionId}`);
       (socket as any).currentAuction = null;
     });
@@ -56,12 +50,10 @@ export function initWebSocket(httpServer: HttpServer): SocketServer {
     socket.on('disconnect', async () => {
       const auctionId = (socket as any).currentAuction;
       if (auctionId) {
-        await prisma.auctionParticipant.updateMany({
-          where: { auctionId, userId: user.userId },
-          data: { isActive: false, leftAt: new Date() },
-        }).catch(() => {});
+        const subastaId = parseInt(auctionId);
+        await prisma.asistenteApp.updateMany({ where: { asistente: { subastaId, clienteId: personaId } }, data: { isActive: false, leftAt: new Date() } }).catch(() => {});
       }
-      console.log(`[WS] User ${user.userId} disconnected`);
+      console.log(`[WS] User ${personaId} disconnected`);
     });
   });
 

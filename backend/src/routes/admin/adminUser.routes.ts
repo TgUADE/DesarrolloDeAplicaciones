@@ -4,6 +4,9 @@ import { adminUserController } from '../../controllers/admin/adminUser.controlle
 const router = Router();
 
 router.get('/users', adminUserController.list);
+router.get('/payment-methods', adminUserController.listPaymentMethods);
+router.get('/duenios', adminUserController.listDuenios);
+router.patch('/duenios/:id/verify', adminUserController.verifyDuenio);
 router.patch('/users/:id/approve', adminUserController.approveRegistration);
 router.patch('/users/:id/category', adminUserController.setCategory);
 router.patch('/users/:id/status', adminUserController.setStatus);

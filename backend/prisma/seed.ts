@@ -1,414 +1,345 @@
-import { PrismaClient, AuctionCategory, AuctionStatus, Currency } from '@prisma/client';
+import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 
 const prisma = new PrismaClient();
 
-/** 6 imágenes reales y estables por ítem (picsum, sin API key). */
-function mkImages(seed: string) {
-  return Array.from({ length: 6 }, (_, j) => ({
-    url: `https://picsum.photos/seed/${seed}-${j + 1}/800/600`,
-    orden: j,
-  }));
+// Deben coincidir con las constantes en src/utils/systemEmpleado.ts
+const SYSTEM_EMPLEADO_EMAIL = 'sistema@subastas.com';
+const EMPRESA_CLIENTE_EMAIL = 'empresa@subastas.com';
+const DAY = 24 * 60 * 60 * 1000;
+const FOTO = 'https://picsum.photos/seed';
+
+/** Crea/actualiza una Persona core + su PersonaApp (clave natural: email). */
+async function upsertPersona(
+  email: string,
+  core: { nombre: string; documento?: string; direccion?: string; estado?: string },
+  app: { apellido?: string; passwordHash?: string; isAdmin?: boolean; registrationStatus?: string; paisOrigen?: string },
+): Promise<number> {
+  const existing = await prisma.personaApp.findUnique({ where: { email } });
+  if (existing) {
+    await prisma.personaApp.update({ where: { email }, data: app });
+    await prisma.persona.update({ where: { identificador: existing.personaId }, data: { nombre: core.nombre, direccion: core.direccion, estado: core.estado ?? 'activo', documento: core.documento ?? '' } });
+    return existing.personaId;
+  }
+  const persona = await prisma.persona.create({
+    data: { nombre: core.nombre, documento: core.documento ?? '', direccion: core.direccion, estado: core.estado ?? 'activo', app: { create: { email, ...app } } },
+  });
+  return persona.identificador;
 }
 
-type ItemSeed = {
+async function upsertEmpleado(email: string, nombre: string, apellido: string, cargo: string, sectorId: number): Promise<number> {
+  const id = await upsertPersona(email, { nombre, documento: `DOC-${email.split('@')[0]}` }, { apellido, registrationStatus: 'aprobado' });
+  await prisma.empleado.upsert({ where: { identificador: id }, create: { identificador: id, cargo, sectorId }, update: { cargo, sectorId } });
+  return id;
+}
+
+/** Seguro por pieza (consigna: a cada bien recibido se le contrata un seguro según el valor base). */
+async function crearSeguro(productoId: number, base: number) {
+  const nroPoliza = `POL-${productoId}`;
+  await prisma.seguro.upsert({
+    where: { nroPoliza },
+    create: { nroPoliza, compania: 'La Subastadora Seguros S.A.', importe: Math.max(1, Math.round(base)), polizaCombinada: 'no' },
+    update: { importe: Math.max(1, Math.round(base)) },
+  });
+  await prisma.producto.update({ where: { identificador: productoId }, data: { nroPoliza } });
+}
+
+type ProductoSeed = {
   numeroPieza: string;
-  descripcion: string;
+  descripcionCompleta: string;
+  descripcionCatalogo?: string;
   precioBase: number;
-  status?: 'en_subasta' | 'vendido' | 'disponible';
   esObraDeArte?: boolean;
   artista?: string;
   fechaObra?: string;
   historia?: string;
   cantidadElementos?: number;
+  deposito: string;
+  ubicacion: string;
 };
 
-type AuctionSeed = {
-  id: string;
+/** Crea una subasta completa: subasta + catálogo + productos (con fotos y seguro) + items. */
+async function seedAuction(args: {
+  id: number;
   titulo: string;
-  descripcion?: string;
+  descripcion: string;
   fechaHora: Date;
-  categoria: AuctionCategory;
-  moneda: Currency;
-  status: AuctionStatus;
-  esColeccion?: boolean;
-  nombreColeccion?: string;
-  createdById?: string;
-  items: ItemSeed[];
-};
+  ubicacion: string;
+  categoria: string;
+  estado: string;
+  moneda?: string;
+  tieneDeposito?: string;
+  seguridadPropia?: string;
+  capacidadAsistentes?: number;
+  subastadorId: number;
+  duenioId: number;
+  revisorId: number;
+  responsableId: number;
+  productos: ProductoSeed[];
+  liveItemIndex?: number;
+}): Promise<number[]> {
+  await prisma.subasta.upsert({
+    where: { identificador: args.id },
+    create: {
+      identificador: args.id,
+      fecha: args.fechaHora,
+      hora: args.fechaHora,
+      estado: args.estado,
+      ubicacion: args.ubicacion,
+      categoria: args.categoria,
+      tieneDeposito: args.tieneDeposito ?? 'si',
+      seguridadPropia: args.seguridadPropia ?? 'no',
+      capacidadAsistentes: args.capacidadAsistentes ?? 100,
+      subastadorId: args.subastadorId,
+      app: { create: { titulo: args.titulo, descripcion: args.descripcion, fechaHora: args.fechaHora, moneda: args.moneda ?? 'ARS' } },
+    },
+    update: { estado: args.estado },
+  });
+
+  const catalogoId = args.id;
+  await prisma.catalogo.upsert({
+    where: { identificador: catalogoId },
+    create: { identificador: catalogoId, descripcion: `Catálogo · ${args.titulo}`, subastaId: args.id, responsableId: args.responsableId },
+    update: { responsableId: args.responsableId },
+  });
+
+  const itemIds: number[] = [];
+  for (let i = 0; i < args.productos.length; i++) {
+    const pd = args.productos[i];
+    const existingApp = await prisma.productoApp.findUnique({ where: { numeroPieza: pd.numeroPieza } });
+    let productoId = existingApp?.productoId;
+    if (productoId == null) {
+      const producto = await prisma.producto.create({
+        data: {
+          fecha: new Date(Date.now() - 5 * DAY),
+          disponible: 'si',
+          descripcionCompleta: pd.descripcionCompleta,
+          descripcionCatalogo: pd.descripcionCatalogo ?? pd.descripcionCompleta,
+          duenioId: args.duenioId,
+          revisorId: args.revisorId,
+          fotos: {
+            create: Array.from({ length: 6 }, (_, k) => ({ app: { create: { url: `${FOTO}/${pd.numeroPieza}-${k}/600/450`, orden: k } } })),
+          },
+          app: {
+            create: {
+              numeroPieza: pd.numeroPieza,
+              status: 'disponible',
+              esObraDeArte: pd.esObraDeArte ?? false,
+              artista: pd.artista,
+              fechaObra: pd.fechaObra,
+              historia: pd.historia,
+              cantidadElementos: pd.cantidadElementos ?? 1,
+              deposito: pd.deposito,
+              ubicacion: pd.ubicacion,
+            },
+          },
+        },
+      });
+      productoId = producto.identificador;
+      await crearSeguro(productoId, pd.precioBase);
+    }
+
+    let item = await prisma.itemCatalogo.findFirst({ where: { catalogoId, productoId } });
+    if (!item) {
+      item = await prisma.itemCatalogo.create({
+        data: { catalogoId, productoId, precioBase: pd.precioBase, comision: Math.round(pd.precioBase * 0.05), app: { create: { ordenEnSubasta: i + 1, status: 'en_subasta' } } },
+      });
+    }
+    itemIds.push(item.identificador);
+  }
+
+  if (args.liveItemIndex != null && itemIds[args.liveItemIndex] != null) {
+    await prisma.subasta.update({
+      where: { identificador: args.id },
+      data: { app: { update: { currentItemId: itemIds[args.liveItemIndex], currentItemEndsAt: new Date(Date.now() + 60 * 60 * 1000) } } },
+    });
+  }
+  console.log(`✅ Subasta #${args.id} "${args.titulo}" (${args.estado}) · ${args.productos.length} piezas`);
+  return itemIds;
+}
 
 async function main() {
   console.log('🌱 Seeding database...');
 
-  // ---------- Usuarios ----------
-  const adminHash = await bcrypt.hash('admin123', 12);
-  const admin = await prisma.user.upsert({
-    where: { email: 'admin@subastas.com' },
-    update: {},
-    create: {
-      nombre: 'Admin',
-      apellido: 'Sistema',
-      email: 'admin@subastas.com',
-      passwordHash: adminHash,
-      docFrenteUrl: '/uploads/documents/placeholder.jpg',
-      docDorsoUrl: '/uploads/documents/placeholder.jpg',
-      domicilioLegal: 'Av. Corrientes 1234, CABA',
-      paisOrigen: 'Argentina',
-      categoria: 'platino',
-      status: 'aprobado',
-      isAdmin: true,
-    },
-  });
-  console.log(`✅ Admin: ${admin.email}`);
-
-  const userHash = await bcrypt.hash('user123', 12);
-  const demoUser = await prisma.user.upsert({
-    where: { email: 'usuario@demo.com' },
-    update: { categoria: 'oro' },
-    create: {
-      nombre: 'Juan',
-      apellido: 'Pérez',
-      email: 'usuario@demo.com',
-      passwordHash: userHash,
-      docFrenteUrl: '/uploads/documents/placeholder.jpg',
-      docDorsoUrl: '/uploads/documents/placeholder.jpg',
-      domicilioLegal: 'Av. Santa Fe 5678, CABA',
-      paisOrigen: 'Argentina',
-      categoria: 'oro',
-      status: 'aprobado',
-    },
-  });
-  console.log(`✅ Demo user: ${demoUser.email}`);
-
-  // Medios de pago del usuario demo (uno nacional ARS y uno internacional USD)
-  await prisma.paymentMethod.upsert({
-    where: { id: 'demo-pm-1' },
-    update: { verificado: true, activo: true },
-    create: {
-      id: 'demo-pm-1',
-      userId: demoUser.id,
-      tipo: 'tarjeta_credito_nacional',
-      moneda: 'ARS',
-      banco: 'Banco Galicia',
-      numeroTarjeta: '4321',
-      titularTarjeta: 'Juan Pérez',
-      vencimiento: '12/27',
-      verificado: true,
-    },
-  });
-  await prisma.paymentMethod.upsert({
-    where: { id: 'demo-pm-2' },
-    update: { verificado: true, activo: true },
-    create: {
-      id: 'demo-pm-2',
-      userId: demoUser.id,
-      tipo: 'tarjeta_credito_internacional',
-      moneda: 'USD',
-      banco: 'Citibank',
-      numeroTarjeta: '8790',
-      titularTarjeta: 'Juan Pérez',
-      vencimiento: '08/28',
-      verificado: true,
-    },
-  });
-  console.log('✅ Medios de pago del usuario demo (ARS + USD)');
-
-  // ---------- Rematadores ----------
-  const rematador = await prisma.rematador.upsert({
-    where: { matricula: 'MAT-001' },
-    update: {},
-    create: { nombre: 'Carlos', apellido: 'Rodríguez', matricula: 'MAT-001', email: 'rematador@subastas.com' },
-  });
-  const rematador2 = await prisma.rematador.upsert({
-    where: { matricula: 'MAT-002' },
-    update: {},
-    create: { nombre: 'Lucía', apellido: 'Méndez', matricula: 'MAT-002', email: 'lucia@subastas.com' },
-  });
-  console.log('✅ Rematadores');
-
-  // ---------- Helper para crear subasta + ítems + imágenes ----------
-  async function seedAuction(a: AuctionSeed, rematadorId: string) {
-    const auction = await prisma.auction.upsert({
-      where: { id: a.id },
-      update: { status: a.status, fechaHora: a.fechaHora, createdById: a.createdById ?? null },
-      create: {
-        id: a.id,
-        titulo: a.titulo,
-        descripcion: a.descripcion ?? null,
-        fechaHora: a.fechaHora,
-        ubicacion: 'Palais de Glace, Posadas 1725, CABA',
-        categoria: a.categoria,
-        moneda: a.moneda,
-        status: a.status,
-        esColeccion: a.esColeccion ?? false,
-        nombreColeccion: a.nombreColeccion ?? null,
-        createdById: a.createdById ?? null,
-        rematadorId,
-      },
-    });
-
-    const created = [];
-    for (let i = 0; i < a.items.length; i++) {
-      const d = a.items[i];
-      const it = await prisma.item.upsert({
-        where: { numeroPieza: d.numeroPieza },
-        update: { auctionId: auction.id, status: d.status ?? 'en_subasta', ordenEnSubasta: i + 1, currentOwnerId: admin.id },
-        create: {
-          numeroPieza: d.numeroPieza,
-          descripcion: d.descripcion,
-          precioBase: d.precioBase,
-          currentOwnerId: admin.id,
-          auctionId: auction.id,
-          ordenEnSubasta: i + 1,
-          status: d.status ?? 'en_subasta',
-          esObraDeArte: d.esObraDeArte ?? false,
-          artista: d.artista ?? null,
-          fechaObra: d.fechaObra ?? null,
-          historia: d.historia ?? null,
-          cantidadElementos: d.cantidadElementos ?? 1,
-        },
-      });
-      // Imágenes idempotentes: borrar y recrear
-      await prisma.itemImage.deleteMany({ where: { itemId: it.id } });
-      await prisma.itemImage.createMany({
-        data: mkImages(d.numeroPieza).map((x) => ({ ...x, itemId: it.id })),
-      });
-      created.push(it);
-    }
-
-    // Reset reproducible: limpiar pujas y compras de los ítems de esta subasta.
-    const itemIds = created.map((i) => i.id);
-    await prisma.puja.deleteMany({ where: { itemId: { in: itemIds } } });
-    await prisma.purchase.deleteMany({ where: { itemId: { in: itemIds } } });
-
-    // Si está abierta, fijar el primer ítem como el que se está rematando + arrancar timer (5 min)
-    if (a.status === 'abierta' && created.length > 0) {
-      await prisma.auction.update({
-        where: { id: auction.id },
-        data: { currentItemId: created[0].id, currentItemEndsAt: new Date(Date.now() + 5 * 60 * 1000) },
-      });
-    }
-
-    return { auction, items: created };
-  }
-
-  // ---------- Catálogo de subastas ----------
-  const now = new Date();
-  const at = (deltaDays: number, hour = 18) => {
-    const d = new Date(now);
-    d.setDate(d.getDate() + deltaDays);
-    d.setHours(hour, 0, 0, 0);
-    return d;
-  };
-
-  const auctions: { data: AuctionSeed; rematadorId: string }[] = [
-    // EN VIVO
-    {
-      rematadorId: rematador.id,
-      data: {
-        id: 'auc-live-1',
-        titulo: 'Colección Primavera 2026',
-        descripcion: 'Mobiliario y objetos de diseño de los siglos XIX y XX.',
-        fechaHora: now,
-        categoria: 'especial',
-        moneda: 'USD',
-        status: 'abierta',
-        esColeccion: true,
-        nombreColeccion: 'Primavera 2026',
-        createdById: demoUser.id, // creada por el usuario demo (puede iniciar ítems sin ser admin)
-        items: [
-          { numeroPieza: 'LIV-001', descripcion: 'Set sillas Luis XV (4)', precioBase: 38000 },
-          { numeroPieza: 'LIV-002', descripcion: 'Sofá Luis XV tapizado en seda', precioBase: 15200 },
-          { numeroPieza: 'LIV-003', descripcion: 'Juego de té porcelana (18 pzas)', precioBase: 5200, esObraDeArte: true, artista: 'Sèvres', fechaObra: 'siglo XIX', historia: 'Porcelana francesa de Sèvres, decorada a mano. Procedencia: colección privada.' },
-          { numeroPieza: 'LIV-004', descripcion: 'Espejo veneciano dorado', precioBase: 12400 },
-          { numeroPieza: 'LIV-005', descripcion: 'Mesa de luz estilo imperio', precioBase: 5800 },
-          { numeroPieza: 'LIV-006', descripcion: 'Lámpara de pie art déco', precioBase: 7300 },
-        ],
-      },
-    },
-    {
-      rematadorId: rematador2.id,
-      data: {
-        id: 'auc-live-2',
-        titulo: 'Relojes y Joyas en Vivo',
-        descripcion: 'Relojería fina y joyas de época.',
-        fechaHora: now,
-        categoria: 'comun',
-        moneda: 'ARS',
-        status: 'abierta',
-        items: [
-          { numeroPieza: 'RJ-001', descripcion: 'Reloj de bolsillo de plata', precioBase: 180000 },
-          { numeroPieza: 'RJ-002', descripcion: 'Anillo de oro con esmeralda', precioBase: 420000 },
-          { numeroPieza: 'RJ-003', descripcion: 'Collar de perlas naturales', precioBase: 310000 },
-        ],
-      },
-    },
-    // PRÓXIMAS
-    {
-      rematadorId: rematador.id,
-      data: {
-        id: 'demo-auction-1',
-        titulo: 'Subasta de Arte Moderno - Mayo 2026',
-        descripcion: 'Colección exclusiva de arte moderno argentino.',
-        fechaHora: new Date('2026-05-15T18:00:00'),
-        categoria: 'especial',
-        moneda: 'ARS',
-        status: 'programada',
-        items: [
-          { numeroPieza: 'PIEZA-001', descripcion: 'Óleo sobre tela - Paisaje Patagónico', precioBase: 50000, esObraDeArte: true, artista: 'Roberto Páez', fechaObra: '1985', historia: 'Obra icónica del período post-modernista argentino.' },
-          { numeroPieza: 'PIEZA-002', descripcion: 'Acuarela - Puerto al atardecer', precioBase: 32000, esObraDeArte: true, artista: 'A. Berni', fechaObra: '1960' },
-          { numeroPieza: 'PIEZA-003', descripcion: 'Escultura en bronce - Danza', precioBase: 78000, esObraDeArte: true, artista: 'R. Torres', fechaObra: '1972' },
-        ],
-      },
-    },
-    {
-      rematadorId: rematador2.id,
-      data: {
-        id: 'auc-up-hoy',
-        titulo: 'Especial de Hoy - Diseño Nórdico',
-        fechaHora: at(0, Math.min(23, now.getHours() + 3)),
-        categoria: 'oro',
-        moneda: 'USD',
-        status: 'programada',
-        items: [
-          { numeroPieza: 'ND-001', descripcion: 'Butaca de cuero estilo nórdico', precioBase: 4200 },
-          { numeroPieza: 'ND-002', descripcion: 'Mesa de centro en roble', precioBase: 2800 },
-        ],
-      },
-    },
-    {
-      rematadorId: rematador.id,
-      data: {
-        id: 'auc-up-1',
-        titulo: 'Joyería Antigua',
-        fechaHora: at(4),
-        categoria: 'comun',
-        moneda: 'ARS',
-        status: 'programada',
-        items: [
-          { numeroPieza: 'JA-001', descripcion: 'Broche art nouveau', precioBase: 95000 },
-          { numeroPieza: 'JA-002', descripcion: 'Pulsera de oro 18k', precioBase: 540000 },
-        ],
-      },
-    },
-    {
-      rematadorId: rematador.id,
-      data: {
-        id: 'auc-up-2',
-        titulo: 'Mobiliario de Diseño',
-        fechaHora: at(7),
-        categoria: 'especial',
-        moneda: 'ARS',
-        status: 'programada',
-        items: [
-          { numeroPieza: 'MD-001', descripcion: 'Sillón Eames original', precioBase: 680000 },
-          { numeroPieza: 'MD-002', descripcion: 'Biblioteca modular de nogal', precioBase: 320000 },
-          { numeroPieza: 'MD-003', descripcion: 'Aparador escandinavo', precioBase: 410000 },
-        ],
-      },
-    },
-    {
-      rematadorId: rematador2.id,
-      data: {
-        id: 'auc-up-3',
-        titulo: 'Relojería de Colección',
-        fechaHora: at(10),
-        categoria: 'plata',
-        moneda: 'USD',
-        status: 'programada',
-        items: [
-          { numeroPieza: 'RC-001', descripcion: 'Reloj suizo automático años 60', precioBase: 8900 },
-          { numeroPieza: 'RC-002', descripcion: 'Cronógrafo de pulsera vintage', precioBase: 12500 },
-        ],
-      },
-    },
-    {
-      rematadorId: rematador.id,
-      data: {
-        id: 'auc-up-4',
-        titulo: 'Arte Contemporáneo',
-        fechaHora: at(12),
-        categoria: 'platino',
-        moneda: 'USD',
-        status: 'programada',
-        items: [
-          { numeroPieza: 'AC-001', descripcion: 'Instalación mixta s/ título', precioBase: 45000, esObraDeArte: true, artista: 'M. Schvartz', fechaObra: '2018' },
-          { numeroPieza: 'AC-002', descripcion: 'Serigrafía edición limitada', precioBase: 9800, esObraDeArte: true, artista: 'Le Parc', fechaObra: '2005' },
-        ],
-      },
-    },
-    // FINALIZADA
-    {
-      rematadorId: rematador.id,
-      data: {
-        id: 'auc-fin-1',
-        titulo: 'Antigüedades - Diciembre 2025',
-        fechaHora: at(-60),
-        categoria: 'especial',
-        moneda: 'ARS',
-        status: 'finalizada',
-        items: [
-          { numeroPieza: 'AN-001', descripcion: 'Cómoda francesa siglo XVIII', precioBase: 290000, status: 'vendido' },
-          { numeroPieza: 'AN-002', descripcion: 'Vajilla de porcelana inglesa', precioBase: 150000, status: 'vendido' },
-        ],
-      },
-    },
+  // ── Países ───────────────────────────────────────────────────────────────────
+  const paises = [
+    { numero: 32, nombre: 'Argentina', nombreCorto: 'ARG', capital: 'Buenos Aires', nacionalidad: 'argentina', idiomas: 'Español' },
+    { numero: 858, nombre: 'Uruguay', nombreCorto: 'URU', capital: 'Montevideo', nacionalidad: 'uruguaya', idiomas: 'Español' },
+    { numero: 76, nombre: 'Brasil', nombreCorto: 'BRA', capital: 'Brasilia', nacionalidad: 'brasileña', idiomas: 'Portugués' },
+    { numero: 840, nombre: 'Estados Unidos', nombreCorto: 'USA', capital: 'Washington D.C.', nacionalidad: 'estadounidense', idiomas: 'Inglés' },
+    { numero: 724, nombre: 'España', nombreCorto: 'ESP', capital: 'Madrid', nacionalidad: 'española', idiomas: 'Español' },
   ];
+  for (const p of paises) await prisma.pais.upsert({ where: { numero: p.numero }, create: p, update: p });
 
-  const seeded: Record<string, { auction: any; items: any[] }> = {};
-  for (const a of auctions) {
-    seeded[a.data.id] = await seedAuction(a.data, a.rematadorId);
+  // ── Sectores ──────────────────────────────────────────────────────────────────
+  const sectorNames = ['Verificación', 'Revisión de productos', 'Catálogo', 'Depósito', 'Seguros', 'Administración', 'Logística'];
+  const sector: Record<string, number> = {};
+  for (const nombre of sectorNames) {
+    const ex = await prisma.sector.findFirst({ where: { nombreSector: nombre } });
+    const s = ex ?? (await prisma.sector.create({ data: { nombreSector: nombre, codigoSector: nombre.slice(0, 3).toUpperCase() } }));
+    sector[nombre] = s.identificador;
   }
-  console.log(`✅ ${auctions.length} subastas con catálogo e imágenes`);
 
-  // ---------- Pujas en vivo ----------
-  async function seedBids(auctionId: string, montos: { userId: string; monto: number }[], moneda: Currency) {
-    const { auction, items } = seeded[auctionId];
-    const itemId = auction.currentItemId ?? items[0]?.id;
-    if (!itemId) return;
-    const count = await prisma.puja.count({ where: { itemId } });
-    if (count > 0) return;
-    for (const m of montos) {
-      await prisma.puja.create({
-        data: { auctionId, itemId, userId: m.userId, monto: m.monto, moneda, confirmada: true },
-      });
-    }
+  // ── Empleados ─────────────────────────────────────────────────────────────────
+  const systemId = await upsertPersona(SYSTEM_EMPLEADO_EMAIL, { nombre: 'Sistema' }, { apellido: 'Interno', registrationStatus: 'aprobado' });
+  await prisma.empleado.upsert({ where: { identificador: systemId }, create: { identificador: systemId, cargo: 'Administración', sectorId: sector['Administración'] }, update: { cargo: 'Administración', sectorId: sector['Administración'] } });
+
+  const verificadorId = await upsertEmpleado('ana.verif@subastas.com', 'Ana', 'Gómez', 'Verificadora de clientes', sector['Verificación']);
+  const revisorId = await upsertEmpleado('pedro.rev@subastas.com', 'Pedro', 'Ruiz', 'Revisor de piezas', sector['Revisión de productos']);
+  const responsableId = await upsertEmpleado('lucia.cat@subastas.com', 'Lucía', 'Díaz', 'Responsable de catálogo', sector['Catálogo']);
+  const depositoId = await upsertEmpleado('jorge.dep@subastas.com', 'Jorge', 'Fernández', 'Encargado de depósito', sector['Depósito']);
+
+  // Responsables de sector
+  await prisma.sector.update({ where: { identificador: sector['Verificación'] }, data: { responsableSector: verificadorId } });
+  await prisma.sector.update({ where: { identificador: sector['Revisión de productos'] }, data: { responsableSector: revisorId } });
+  await prisma.sector.update({ where: { identificador: sector['Catálogo'] }, data: { responsableSector: responsableId } });
+  await prisma.sector.update({ where: { identificador: sector['Depósito'] }, data: { responsableSector: depositoId } });
+  console.log(`✅ ${sectorNames.length} sectores · 5 empleados`);
+
+  // ── Admin ───────────────────────────────────────────────────────────────────
+  const adminHash = await bcrypt.hash('admin123', 12);
+  await upsertPersona('admin@subastas.com', { nombre: 'Admin', direccion: 'Av. Corrientes 1234, CABA', documento: '20111111119' }, { apellido: 'Sistema', passwordHash: adminHash, isAdmin: true, registrationStatus: 'aprobado', paisOrigen: 'Argentina' });
+
+  // ── Clientes ──────────────────────────────────────────────────────────────────
+  const userHash = await bcrypt.hash('user123', 12);
+  async function seedCliente(email: string, nombre: string, apellido: string, doc: string, dir: string, pais: number, categoria: string, pass?: string) {
+    const id = await upsertPersona(email, { nombre, direccion: dir, documento: doc }, { apellido, passwordHash: pass, isAdmin: false, registrationStatus: 'aprobado', paisOrigen: 'Argentina' });
+    await prisma.cliente.upsert({
+      where: { identificador: id },
+      create: { identificador: id, categoria, admitido: 'si', verificadorId, numeroPais: pais },
+      update: { categoria, admitido: 'si', verificadorId, numeroPais: pais },
+    });
+    return id;
   }
-  await seedBids('auc-live-1', [
-    { userId: demoUser.id, monto: 38500 },
-    { userId: admin.id, monto: 39200 },
-    { userId: demoUser.id, monto: 40100 },
-  ], 'USD');
-  await seedBids('auc-live-2', [
-    { userId: admin.id, monto: 185000 },
-    { userId: demoUser.id, monto: 192000 },
-  ], 'ARS');
-  console.log('✅ Pujas en vivo');
+  const demoId = await seedCliente('usuario@demo.com', 'Juan', 'Pérez', '30222222227', 'Av. Santa Fe 5678, CABA', 32, 'oro', userHash);
+  await seedCliente('sofia@demo.com', 'Sofía', 'Romero', '27333333334', 'Bvar. España 200, Montevideo', 858, 'platino');
+  await seedCliente('martin@demo.com', 'Martín', 'Silva', '23444444449', 'Rua Augusta 50, São Paulo', 76, 'especial');
 
-  // ---------- Participaciones del usuario demo (Mis subastas) ----------
-  for (const aid of ['auc-live-1', 'auc-live-2', 'demo-auction-1', 'auc-up-2', 'auc-fin-1']) {
-    await prisma.auctionParticipant.upsert({
-      where: { auctionId_userId: { auctionId: aid, userId: demoUser.id } },
-      update: {},
-      create: { auctionId: aid, userId: demoUser.id, isActive: aid.startsWith('auc-live') },
+  // Medios de pago del usuario demo (necesarios para pujar)
+  const pmCount = await prisma.paymentMethod.count({ where: { personaId: demoId } });
+  if (pmCount === 0) {
+    await prisma.paymentMethod.createMany({
+      data: [
+        { personaId: demoId, tipo: 'cuenta_bancaria_nacional', moneda: 'ARS', banco: 'Banco Nación', numeroCuenta: '0110599520000001234567', verificado: true, activo: true },
+        { personaId: demoId, tipo: 'cuenta_bancaria_extranjera', moneda: 'USD', banco: 'Citibank', numeroCuenta: 'US12345678901234', swift: 'CITIUS33', verificado: true, activo: true },
+        { personaId: demoId, tipo: 'tarjeta_credito_nacional', moneda: 'ARS', banco: 'Banco Galicia', numeroTarjeta: '4242', titularTarjeta: 'Juan Pérez', vencimiento: '12/28', verificado: false, activo: true },
+      ],
     });
   }
-  console.log('✅ Participaciones del usuario demo');
 
-  // ---------- Favoritos del usuario demo (subastas próximas seguidas) ----------
-  for (const aid of ['auc-up-2', 'auc-up-3']) {
-    await prisma.auctionFavorite.upsert({
-      where: { userId_auctionId: { userId: demoUser.id, auctionId: aid } },
+  // ── Cliente "empresa" (compra los ítems sin pujas al valor base) ───────────────
+  const empresaId = await upsertPersona(EMPRESA_CLIENTE_EMAIL, { nombre: 'Casa de Subastas', direccion: 'Av. del Libertador 100, CABA', documento: '30707070704' }, { apellido: 'S.A.', registrationStatus: 'aprobado', paisOrigen: 'Argentina' });
+  await prisma.cliente.upsert({
+    where: { identificador: empresaId },
+    create: { identificador: empresaId, categoria: 'platino', admitido: 'si', verificadorId, numeroPais: 32 },
+    update: { categoria: 'platino', admitido: 'si', verificadorId, numeroPais: 32 },
+  });
+
+  // ── Subastador ───────────────────────────────────────────────────────────────
+  const subId = await upsertPersona('rematador@subastas.com', { nombre: 'Carlos', documento: '24555555556' }, { apellido: 'Rodríguez', registrationStatus: 'aprobado' });
+  await prisma.subastador.upsert({
+    where: { identificador: subId },
+    create: { identificador: subId, matricula: 'MAT-001', region: 'CABA', app: { create: { activo: true, email: 'rematador@subastas.com' } } },
+    update: { matricula: 'MAT-001', region: 'CABA', app: { upsert: { create: { activo: true, email: 'rematador@subastas.com' }, update: { activo: true } } } },
+  });
+
+  // ── Dueño (con verificación financiera/judicial y calificación de riesgo) ──────
+  const duenioId = await upsertPersona('duenio@demo.com', { nombre: 'María', direccion: 'Calle Falsa 123, CABA', documento: '26666666663' }, { apellido: 'López', registrationStatus: 'aprobado', paisOrigen: 'Argentina' });
+  await prisma.duenio.upsert({
+    where: { identificador: duenioId },
+    create: { identificador: duenioId, verificadorId, numeroPais: 32, verificacionFinanciera: 'si', verificacionJudicial: 'si', calificacionRiesgo: 2 },
+    update: { verificadorId, numeroPais: 32, verificacionFinanciera: 'si', verificacionJudicial: 'si', calificacionRiesgo: 2 },
+  });
+  console.log(`✅ Usuarios (admin, demo=${demoId}, sofia, martin, empresa=${empresaId}, subastador=${subId}, dueño=${duenioId})`);
+
+  const common = { subastadorId: subId, duenioId, revisorId, responsableId };
+
+  // ── Subasta EN VIVO ────────────────────────────────────────────────────────────
+  await seedAuction({
+    ...common, id: 1, titulo: 'Arte Contemporáneo - En Vivo', descripcion: 'Remate en vivo de pintura y escultura contemporánea.',
+    fechaHora: new Date(), ubicacion: 'Palais de Glace, Posadas 1725, CABA', categoria: 'especial', estado: 'abierta',
+    tieneDeposito: 'si', seguridadPropia: 'si', capacidadAsistentes: 150,
+    productos: [
+      { numeroPieza: 'A1-001', descripcionCompleta: 'Óleo sobre tela - Paisaje Patagónico', precioBase: 50000, esObraDeArte: true, artista: 'R. Soldi', fechaObra: '1962', historia: 'Pieza exhibida en el Museo Nacional en 1965.', deposito: 'Depósito Central', ubicacion: 'Estante A-12' },
+      { numeroPieza: 'A1-002', descripcionCompleta: 'Acuarela - Puerto al atardecer', precioBase: 65000, esObraDeArte: true, artista: 'F. Fader', fechaObra: '1918', deposito: 'Depósito Central', ubicacion: 'Estante A-13' },
+      { numeroPieza: 'A1-003', descripcionCompleta: 'Escultura en bronce - Danza', precioBase: 80000, cantidadElementos: 1, deposito: 'Depósito Central', ubicacion: 'Sala segura S-2' },
+    ],
+    liveItemIndex: 0,
+  });
+
+  // ── Subastas PROGRAMADAS ───────────────────────────────────────────────────────
+  await seedAuction({
+    ...common, id: 2, titulo: 'Antigüedades y Mobiliario', descripcion: 'Piezas de colección de los siglos XIX y XX.',
+    fechaHora: new Date(Date.now() + 12 * DAY), ubicacion: 'Hotel Alvear, Av. Alvear 1891, CABA', categoria: 'comun', estado: 'programada',
+    tieneDeposito: 'si', seguridadPropia: 'no', capacidadAsistentes: 80,
+    productos: [
+      { numeroPieza: 'A2-001', descripcionCompleta: 'Reloj de pie inglés de roble', precioBase: 50000, historia: 'Fabricado en Londres, circa 1890.', deposito: 'Depósito Norte', ubicacion: 'Pasillo 3' },
+      { numeroPieza: 'A2-002', descripcionCompleta: 'Juego de sillas estilo Luis XV (6 piezas)', precioBase: 65000, cantidadElementos: 6, deposito: 'Depósito Norte', ubicacion: 'Pasillo 3' },
+      { numeroPieza: 'A2-003', descripcionCompleta: 'Espejo veneciano dorado', precioBase: 80000, deposito: 'Depósito Norte', ubicacion: 'Pasillo 4' },
+    ],
+  });
+
+  await seedAuction({
+    ...common, id: 3, titulo: 'Joyas y Relojería', descripcion: 'Alta joyería y relojes de autor.',
+    fechaHora: new Date(Date.now() + 20 * DAY), ubicacion: 'Four Seasons, Posadas 1086, CABA', categoria: 'plata', estado: 'programada', moneda: 'USD',
+    tieneDeposito: 'si', seguridadPropia: 'si', capacidadAsistentes: 40,
+    productos: [
+      { numeroPieza: 'A3-001', descripcionCompleta: 'Reloj suizo automático en oro', precioBase: 4000, deposito: 'Bóveda', ubicacion: 'Caja fuerte 1' },
+      { numeroPieza: 'A3-002', descripcionCompleta: 'Collar de perlas naturales', precioBase: 6000, deposito: 'Bóveda', ubicacion: 'Caja fuerte 2' },
+    ],
+  });
+
+  await seedAuction({
+    ...common, id: 4, titulo: 'Vinos y Destilados de Colección', descripcion: 'Añadas únicas y botellas de edición limitada.',
+    fechaHora: new Date(Date.now() + 30 * DAY), ubicacion: 'La Rural, Av. Sarmiento 2704, CABA', categoria: 'oro', estado: 'programada',
+    tieneDeposito: 'si', seguridadPropia: 'no', capacidadAsistentes: 60,
+    productos: [
+      { numeroPieza: 'A4-001', descripcionCompleta: 'Malbec Gran Reserva 1995 (magnum)', precioBase: 50000, deposito: 'Cava', ubicacion: 'Rack 7' },
+      { numeroPieza: 'A4-002', descripcionCompleta: 'Whisky single malt 30 años', precioBase: 70000, deposito: 'Cava', ubicacion: 'Rack 8' },
+      { numeroPieza: 'A4-003', descripcionCompleta: 'Champagne vintage 2002', precioBase: 90000, deposito: 'Cava', ubicacion: 'Rack 9' },
+    ],
+  });
+
+  // ── Subasta CERRADA con una venta concretada (compra del usuario demo) ─────────
+  const cerradaItems = await seedAuction({
+    ...common, id: 5, titulo: 'Subasta de Verano (cerrada)', descripcion: 'Subasta finalizada, con piezas adjudicadas.',
+    fechaHora: new Date(Date.now() - 3 * DAY), ubicacion: 'Centro de Convenciones, CABA', categoria: 'especial', estado: 'cerrada',
+    tieneDeposito: 'si', seguridadPropia: 'si', capacidadAsistentes: 120,
+    productos: [
+      { numeroPieza: 'A5-001', descripcionCompleta: 'Grabado firmado y numerado', precioBase: 40000, esObraDeArte: true, artista: 'A. Berni', fechaObra: '1970', deposito: 'Depósito Central', ubicacion: 'Estante B-04' },
+    ],
+  });
+  const ventaItemId = cerradaItems[0];
+  const ventaItem = await prisma.itemCatalogo.findUnique({ where: { identificador: ventaItemId }, include: { producto: true } });
+  const yaVendido = await prisma.registroDeSubasta.findFirst({ where: { productoId: ventaItem!.productoId } });
+  if (ventaItem && !yaVendido) {
+    const demoPm = await prisma.paymentMethod.findFirst({ where: { personaId: demoId, moneda: 'ARS', verificado: true } });
+    const count = await prisma.asistente.count({ where: { subastaId: 5 } });
+    const asistente = await prisma.asistente.upsert({
+      where: { subastaId_clienteId: { subastaId: 5, clienteId: demoId } },
+      create: { subastaId: 5, clienteId: demoId, numeroPostor: count + 1, app: { create: { isActive: false, leftAt: new Date(Date.now() - 3 * DAY) } } },
       update: {},
-      create: { userId: demoUser.id, auctionId: aid },
     });
+    const importe = Math.round(Number(ventaItem.precioBase) * 1.15);
+    await prisma.pujo.create({
+      data: { asistenteId: asistente.identificador, itemId: ventaItemId, importe, ganador: 'si', app: { create: { confirmada: true, moneda: 'ARS', paymentMethodId: demoPm?.id ?? null } } },
+    });
+    await prisma.itemCatalogo.update({ where: { identificador: ventaItemId }, data: { subastado: 'si', app: { update: { status: 'vendido' } } } });
+    await prisma.producto.update({ where: { identificador: ventaItem.productoId }, data: { disponible: 'no', app: { update: { status: 'vendido' } } } });
+    await prisma.registroDeSubasta.create({
+      data: {
+        subastaId: 5, duenioId, productoId: ventaItem.productoId, clienteId: demoId,
+        importe, comision: Math.round(importe * 0.05),
+        app: { create: { moneda: 'ARS', status: 'pendiente_pago', paymentMethodId: demoPm?.id ?? null, costoEnvio: Math.round(importe * 0.02) } },
+      },
+    });
+    console.log('✅ Venta cerrada de ejemplo (compra del usuario demo, pendiente de pago)');
   }
-  console.log('✅ Favoritos del usuario demo');
 
   console.log('\n🎉 Seed completado!');
   console.log('\nCredenciales:');
   console.log('  Admin:    admin@subastas.com / admin123');
-  console.log('  Usuario:  usuario@demo.com / user123  (categoría oro, puede pujar ARS y USD)');
+  console.log('  Usuario:  usuario@demo.com / user123  (categoría oro)');
 }
 
 main()

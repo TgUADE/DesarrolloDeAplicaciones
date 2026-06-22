@@ -14,21 +14,19 @@ export const adminPurchaseController = {
 
   async applyFine(req: Request, res: Response) {
     try {
-      const purchase = await purchaseService.applyFine(req.params.id);
+      const purchase = await purchaseService.applyFine(parseInt(req.params.id));
       return ok(res, purchase);
     } catch (err: any) {
-      const status = err.status || 500;
-      return res.status(status).json({ success: false, error: err.message });
+      return res.status(err.status || 500).json({ success: false, error: err.message });
     }
   },
 
   async markPaid(req: Request, res: Response) {
     try {
-      const purchase = await purchaseService.markPaid(req.params.id);
+      const purchase = await purchaseService.markPaid(parseInt(req.params.id));
       return ok(res, purchase);
     } catch (err: any) {
-      const status = err.status || 500;
-      return res.status(status).json({ success: false, error: err.message });
+      return res.status(err.status || 500).json({ success: false, error: err.message });
     }
   },
 };

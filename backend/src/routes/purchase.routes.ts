@@ -9,9 +9,9 @@ router.use(verifyToken);
 
 router.get('/:id', async (req, res) => {
   try {
-    const purchase = await purchaseService.findById(req.params.id);
+    const purchase = await purchaseService.findById(parseInt(req.params.id));
     if (!purchase) return notFound(res);
-    const isOwner = purchase.buyerId === req.user?.userId;
+    const isOwner = purchase.clienteId?.toString() === req.user?.userId;
     if (!isOwner && !req.user?.isAdmin) return forbidden(res);
     return ok(res, purchase);
   } catch (err: any) { return serverError(res, err.message); }
@@ -19,7 +19,7 @@ router.get('/:id', async (req, res) => {
 
 router.patch('/:id/retire', async (req, res) => {
   try {
-    const purchase = await purchaseService.markRetired(req.params.id, req.user!.userId);
+    const purchase = await purchaseService.markRetired(parseInt(req.params.id), parseInt(req.user!.userId));
     return ok(res, purchase);
   } catch (err: any) {
     const status = (err as any).status || 500;

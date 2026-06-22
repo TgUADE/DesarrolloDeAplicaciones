@@ -1,5 +1,6 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Tabs, useRouter } from 'expo-router';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Text } from 'react-native';
 
 import { getStoredUser } from '@/api/auth';
@@ -9,16 +10,23 @@ function TabIcon({ icon, focused }: { icon: string; focused: boolean }) {
   return <Text style={{ fontSize: 20, opacity: focused ? 1 : 0.45 }}>{icon}</Text>;
 }
 
-/** Navegador de pestañas del usuario logueado (Inicio / Subastas / Vender / Métricas / Perfil). */
 export default function TabsLayout() {
   const router = useRouter();
+  const [isGuest, setIsGuest] = useState(false);
 
-  // Guard simple: sin sesión guardada, volver al login.
   useEffect(() => {
-    getStoredUser().then((u) => {
-      if (!u) router.replace('/login');
+    Promise.all([getStoredUser(), AsyncStorage.getItem('isGuest')]).then(([u, guest]) => {
+      if (!u && guest !== 'true') {
+        router.replace('/login');
+      } else {
+        setIsGuest(guest === 'true' && !u);
+      }
     });
   }, [router]);
+
+  // En modo invitado los tabs ocultos conservan su flex (actúan de espaciadores)
+  // dejando Subastas centrado entre Inicio y Perfil.
+  const hiddenTab = { tabBarButton: () => null };
 
   return (
     <Tabs
@@ -29,22 +37,27 @@ export default function TabsLayout() {
         tabBarStyle: { backgroundColor: Brand.surface, borderTopColor: Brand.border },
         tabBarLabelStyle: { fontSize: 11, fontWeight: FontWeight.medium },
       }}>
+      {/* Posición 1 — siempre visible */}
       <Tabs.Screen
         name="home"
         options={{ title: 'Inicio', tabBarIcon: ({ focused }) => <TabIcon icon="🏠" focused={focused} /> }}
       />
+      {/* Posición 2 — espaciador izquierdo en modo invitado */}
+      <Tabs.Screen
+        name="vender"
+        options={isGuest ? hiddenTab : { title: 'Vender', tabBarIcon: ({ focused }) => <TabIcon icon="➕" focused={focused} /> }}
+      />
+      {/* Posición 3 — centro */}
       <Tabs.Screen
         name="mis-subastas"
         options={{ title: 'Subastas', tabBarIcon: ({ focused }) => <TabIcon icon="🔨" focused={focused} /> }}
       />
-      <Tabs.Screen
-        name="vender"
-        options={{ title: 'Vender', tabBarIcon: ({ focused }) => <TabIcon icon="➕" focused={focused} /> }}
-      />
+      {/* Posición 4 — espaciador derecho en modo invitado */}
       <Tabs.Screen
         name="metricas"
-        options={{ title: 'Métricas', tabBarIcon: ({ focused }) => <TabIcon icon="📊" focused={focused} /> }}
+        options={isGuest ? hiddenTab : { title: 'Métricas', tabBarIcon: ({ focused }) => <TabIcon icon="📊" focused={focused} /> }}
       />
+      {/* Posición 5 — siempre visible */}
       <Tabs.Screen
         name="perfil"
         options={{ title: 'Perfil', tabBarIcon: ({ focused }) => <TabIcon icon="👤" focused={focused} /> }}

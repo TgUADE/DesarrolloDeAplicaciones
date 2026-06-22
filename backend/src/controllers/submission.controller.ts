@@ -1,17 +1,22 @@
 import { Request, Response } from 'express';
 import { submissionService } from '../services/submission.service';
 import { ok, created, notFound, forbidden, serverError } from '../utils/apiResponse';
+import { saveBase64Image } from '../utils/saveBase64';
 
 export const submissionController = {
   async create(req: Request, res: Response) {
     try {
-      const files = (req.files as Express.Multer.File[]) || [];
-      const imageUrls = files.map(f => `/uploads/submissions/${f.filename}`);
-      const { declaracionPropiedad, origenLicito, ...rest } = req.body;
-      const submission = await submissionService.create(req.user!.userId, {
-        ...rest,
+      // Las imágenes llegan como base64 en JSON (el mobile no puede enviar FormData).
+      const { descripcion, datosHistoricos, cuentaCobro, declaracionPropiedad, origenLicito, precioSugerido, images } = req.body;
+      const arr: string[] = Array.isArray(images) ? images : [];
+      const imageUrls = arr.map((b64, i) => saveBase64Image(b64, `sub-${i}`));
+      const submission = await submissionService.create(parseInt(req.user!.userId), {
+        descripcion,
+        datosHistoricos,
+        cuentaCobro,
         declaracionPropiedad: declaracionPropiedad === 'true' || declaracionPropiedad === true,
         origenLicito: origenLicito === 'true' || origenLicito === true,
+        precioSugerido: precioSugerido != null && precioSugerido !== '' ? Number(precioSugerido) : undefined,
         images: imageUrls,
       });
       return created(res, submission);
@@ -25,7 +30,7 @@ export const submissionController = {
     try {
       const sub = await submissionService.findById(req.params.id);
       if (!sub) return notFound(res);
-      const isOwner = sub.userId === req.user?.userId;
+      const isOwner = sub.personaId?.toString() === req.user?.userId;
       const isAdmin = req.user?.isAdmin;
       if (!isOwner && !isAdmin) return forbidden(res);
       return ok(res, sub);
@@ -34,14 +39,14 @@ export const submissionController = {
 
   async listMine(req: Request, res: Response) {
     try {
-      const result = await submissionService.listForUser(req.params.id, req);
+      const result = await submissionService.listForUser(parseInt(req.params.id), req);
       return ok(res, result);
     } catch (err: any) { return serverError(res, err.message); }
   },
 
   async userAccept(req: Request, res: Response) {
     try {
-      const sub = await submissionService.userAccept(req.params.id, req.user!.userId);
+      const sub = await submissionService.userAccept(req.params.id, parseInt(req.user!.userId));
       return ok(res, sub);
     } catch (err: any) {
       const status = err.status || 500;
@@ -51,7 +56,7 @@ export const submissionController = {
 
   async userReject(req: Request, res: Response) {
     try {
-      const sub = await submissionService.userReject(req.params.id, req.user!.userId);
+      const sub = await submissionService.userReject(req.params.id, parseInt(req.user!.userId));
       return ok(res, sub);
     } catch (err: any) {
       const status = err.status || 500;

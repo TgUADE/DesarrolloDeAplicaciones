@@ -6,8 +6,19 @@ const router = Router();
 
 router.get('/', async (_req, res) => {
   try {
-    const auctioneers = await prisma.rematador.findMany({ where: { activo: true } });
-    return ok(res, { auctioneers });
+    const subastadores = await prisma.subastador.findMany({
+      where: { app: { activo: true } },
+      include: { app: true, persona: { select: { identificador: true, nombre: true, app: { select: { apellido: true } } } } },
+    });
+    const mapped = subastadores.map((s) => ({
+      id: s.identificador.toString(),
+      nombre: s.persona.nombre,
+      apellido: s.persona.app?.apellido ?? '',
+      matricula: s.matricula,
+      region: s.region,
+      activo: s.app?.activo ?? false,
+    }));
+    return ok(res, { auctioneers: mapped });
   } catch (err: any) { return serverError(res, err.message); }
 });
 

@@ -5,6 +5,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { getItem, type Item } from '@/api/auctions';
+import { isGuestSession } from '@/api/auth';
 import { Badge } from '@/components/ui/badge';
 import { ScreenHeader } from '@/components/ui/screen-header';
 import { Brand, FontSize, FontWeight, Radius, space } from '@/constants/theme';
@@ -22,8 +23,10 @@ export default function DetallePieza() {
   const [item, setItem] = useState<Item | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [isGuest, setIsGuest] = useState(false);
 
   useEffect(() => {
+    isGuestSession().then(setIsGuest);
     if (itemId) load();
   }, [itemId]);
 
@@ -78,7 +81,11 @@ export default function DetallePieza() {
               <Badge label={`Pieza #${item.numeroPieza}`} color={Brand.primary} />
               <Text style={styles.title}>{item.descripcion}</Text>
 
-              {item.precioBase != null ? (
+              {isGuest ? (
+                <Pressable onPress={() => router.replace('/login')} style={styles.guestPriceBanner}>
+                  <Text style={styles.guestPriceText}>🔒 Registrate para ver el precio base</Text>
+                </Pressable>
+              ) : item.precioBase != null ? (
                 <View style={styles.statsRow}>
                   <View style={styles.statCard}>
                     <Text style={styles.statLabel}>Precio base</Text>
@@ -107,9 +114,15 @@ export default function DetallePieza() {
                 {item.cantidadElementos > 1 ? `\n(${item.cantidadElementos} elementos)` : ''}
               </Section>
 
-              <Pressable onPress={goLive} style={({ pressed }) => [styles.cta, pressed && styles.dim]}>
-                <Text style={styles.ctaText}>Ver en subasta en vivo</Text>
-              </Pressable>
+              {isGuest ? (
+                <Pressable onPress={() => router.replace('/login')} style={[styles.cta, { backgroundColor: Brand.accent }]}>
+                  <Text style={styles.ctaText}>Registrate para participar</Text>
+                </Pressable>
+              ) : (
+                <Pressable onPress={goLive} style={({ pressed }) => [styles.cta, pressed && styles.dim]}>
+                  <Text style={styles.ctaText}>Ver en subasta en vivo</Text>
+                </Pressable>
+              )}
             </View>
           </>
         ) : null}
@@ -160,4 +173,14 @@ const styles = StyleSheet.create({
   errorBox: { marginTop: space.xl, alignItems: 'center', gap: space.sm, paddingHorizontal: space.lg },
   errorText: { color: Brand.danger, fontSize: FontSize.sm, textAlign: 'center' },
   retry: { color: Brand.primary, fontWeight: FontWeight.medium, fontSize: FontSize.sm },
+  guestPriceBanner: {
+    backgroundColor: Brand.surface,
+    borderWidth: 1,
+    borderColor: Brand.border,
+    borderRadius: Radius.md,
+    paddingVertical: space.md,
+    alignItems: 'center',
+    marginVertical: space.sm,
+  },
+  guestPriceText: { fontSize: FontSize.sm, color: Brand.primary, fontWeight: FontWeight.medium },
 });

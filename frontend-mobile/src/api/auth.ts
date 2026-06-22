@@ -20,6 +20,7 @@ export async function login(email: string, password: string): Promise<AuthUser> 
   const { accessToken, user } = res.data.data as { accessToken: string; user: AuthUser };
   await AsyncStorage.setItem('accessToken', accessToken);
   await AsyncStorage.setItem('user', JSON.stringify(user));
+  await AsyncStorage.removeItem('isGuest');
   return user;
 }
 
@@ -54,6 +55,7 @@ export async function completeRegistration(payload: CompleteRegistrationPayload)
   const { accessToken, user } = res.data.data as { accessToken: string; user: AuthUser };
   await AsyncStorage.setItem('accessToken', accessToken);
   await AsyncStorage.setItem('user', JSON.stringify(user));
+  await AsyncStorage.removeItem('isGuest');
   return user;
 }
 
@@ -63,7 +65,19 @@ export async function getStoredUser(): Promise<AuthUser | null> {
   return raw ? (JSON.parse(raw) as AuthUser) : null;
 }
 
-/** Limpia la sesión local. */
-export async function logout(): Promise<void> {
+/** Ingresa sin cuenta (modo invitado). */
+export async function loginAsGuest(): Promise<void> {
   await AsyncStorage.multiRemove(['accessToken', 'user']);
+  await AsyncStorage.setItem('isGuest', 'true');
+}
+
+/** Devuelve true si la sesión actual es de invitado. */
+export async function isGuestSession(): Promise<boolean> {
+  const flag = await AsyncStorage.getItem('isGuest');
+  return flag === 'true';
+}
+
+/** Limpia la sesión local (usuario real o invitado). */
+export async function logout(): Promise<void> {
+  await AsyncStorage.multiRemove(['accessToken', 'user', 'isGuest']);
 }

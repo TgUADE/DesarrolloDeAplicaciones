@@ -2,101 +2,144 @@ import { prisma } from '../config/prisma';
 import { emailService } from './email.service';
 import { messageService } from './message.service';
 import { categoryService } from './category.service';
+import { flattenProducto, flattenPersonaLite } from '../utils/flatten';
 
 export const purchaseService = {
-  async findById(id: string) {
-    return prisma.purchase.findUnique({
-      where: { id },
+  async findById(id: number) {
+    const r = await prisma.registroDeSubasta.findUnique({
+      where: { identificador: id },
       include: {
-        item: { include: { images: { take: 1 } } },
-        buyer: { select: { id: true, nombre: true, apellido: true, email: true } },
+        app: true,
+        producto: { include: { app: true, fotos: { take: 1, include: { app: true } } } },
+        cliente: { include: { persona: { select: { identificador: true, nombre: true, app: { select: { apellido: true, email: true } } } } } },
       },
     });
+    if (!r) return null;
+    return { ...r, ...r.app, producto: flattenProducto(r.producto), cliente: { ...r.cliente, persona: flattenPersonaLite(r.cliente.persona) } };
   },
 
-  async applyFine(id: string) {
-    const purchase = await prisma.purchase.findUnique({
-      where: { id },
-      include: { buyer: true },
+  async applyFine(id: number) {
+    const registro = await prisma.registroDeSubasta.findUnique({
+      where: { identificador: id },
+      include: { app: true, cliente: { include: { persona: { include: { app: true } } } } },
     });
-    if (!purchase) throw { status: 404, message: 'Compra no encontrada' };
-    if (purchase.status !== 'pendiente_pago') throw { status: 400, message: 'Estado inválido para aplicar multa' };
+    if (!registro) throw { status: 404, message: 'Compra no encontrada' };
+    if (registro.app?.status !== 'pendiente_pago') throw { status: 400, message: 'Estado inválido para aplicar multa' };
 
-    const multa = Number(purchase.montoGanador) * 0.1;
+    const multa = Number(registro.importe) * 0.1;
     const pagoVencimientoAt = new Date(Date.now() + 72 * 60 * 60 * 1000);
+    const moneda = registro.app?.moneda ?? 'ARS';
 
-    const updated = await prisma.purchase.update({
-      where: { id },
-      data: { status: 'multa_aplicada', multa, multaAplicadaAt: new Date(), pagoVencimientoAt },
+    const updated = await prisma.registroDeSubasta.update({
+      where: { identificador: id },
+      data: { app: { update: { status: 'multa_aplicada', multa, multaAplicadaAt: new Date(), pagoVencimientoAt } } },
+      include: { app: true },
     });
 
-    await messageService.create(
-      purchase.buyerId,
-      'Multa aplicada a tu compra',
-      `Se aplicó una multa del 10% (${purchase.moneda} ${multa}) por no cumplir el pago. Tenés 72 horas para presentar los fondos.`,
-      'multa'
-    );
-
-    if (purchase.buyer.email) {
-      await emailService.sendFineNotification(purchase.buyer.email, multa, purchase.moneda);
+    if (registro.clienteId) {
+      await messageService.create(
+        registro.clienteId,
+        'Multa aplicada a tu compra',
+        `Se aplicó una multa del 10% (${moneda} ${multa}) por no cumplir el pago. Tenés 72 horas para presentar los fondos.`,
+        'multa',
+      );
     }
 
-    return updated;
+    const email = registro.cliente?.persona?.app?.email;
+    if (email) {
+      await emailService.sendFineNotification(email, multa, moneda);
+    }
+
+    return { ...updated, ...updated.app };
   },
 
-  async markRetired(id: string, userId: string) {
-    const purchase = await prisma.purchase.findFirst({ where: { id, buyerId: userId } });
-    if (!purchase) throw { status: 404, message: 'Compra no encontrada' };
-    return prisma.purchase.update({ where: { id }, data: { retiraPersonalmente: true } });
+  async markRetired(id: number, personaId: number) {
+    const registro = await prisma.registroDeSubasta.findFirst({ where: { identificador: id, clienteId: personaId } });
+    if (!registro) throw { status: 404, message: 'Compra no encontrada' };
+    const updated = await prisma.registroDeSubasta.update({
+      where: { identificador: id },
+      data: { app: { update: { retiraPersonalmente: true } } },
+      include: { app: true },
+    });
+    return { ...updated, ...updated.app };
   },
 
   async listAll(status?: string, skip = 0, take = 20) {
-    const where = status ? { status: status as any } : {};
+    const where = status ? { app: { status } } : {};
     const [purchases, total] = await Promise.all([
-      prisma.purchase.findMany({
-        where, skip, take,
+      prisma.registroDeSubasta.findMany({
+        where,
+        skip,
+        take,
         include: {
-          item: { select: { id: true, descripcion: true, numeroPieza: true } },
-          buyer: { select: { id: true, nombre: true, apellido: true } },
+          app: true,
+          producto: { select: { identificador: true, descripcionCatalogo: true, app: { select: { numeroPieza: true, deposito: true, ubicacion: true } } } },
+          cliente: { include: { persona: { select: { identificador: true, nombre: true, app: { select: { apellido: true, email: true } } } } } },
         },
-        orderBy: { createdAt: 'desc' },
+        orderBy: { app: { createdAt: 'desc' } },
       }),
-      prisma.purchase.count({ where }),
+      prisma.registroDeSubasta.count({ where }),
     ]);
-    return { purchases, total };
+    // Resolver el medio de pago usado (paymentMethodId es un string, no una relación).
+    const pmIds = [...new Set(purchases.map((p) => p.app?.paymentMethodId).filter((x): x is string => !!x))];
+    const pms = pmIds.length
+      ? await prisma.paymentMethod.findMany({ where: { id: { in: pmIds } }, select: { id: true, tipo: true, banco: true, moneda: true } })
+      : [];
+    const pmById = new Map(pms.map((m) => [m.id, m]));
+    const mapped = purchases.map((p) => ({
+      ...p,
+      ...p.app,
+      medioPago: p.app?.paymentMethodId ? pmById.get(p.app.paymentMethodId) ?? null : null,
+      producto: {
+        identificador: p.producto.identificador,
+        descripcionCatalogo: p.producto.descripcionCatalogo,
+        numeroPieza: p.producto.app?.numeroPieza ?? null,
+        deposito: p.producto.app?.deposito ?? null,
+        ubicacion: p.producto.app?.ubicacion ?? null,
+      },
+      cliente: { ...p.cliente, persona: flattenPersonaLite(p.cliente.persona) },
+    }));
+    return { purchases: mapped, total };
   },
 
   async checkExpiredFines() {
-    const expired = await prisma.purchase.findMany({
-      where: {
-        status: 'multa_aplicada',
-        pagoVencimientoAt: { lt: new Date() },
-      },
-      include: { buyer: true },
+    const expired = await prisma.registroDeSubasta.findMany({
+      where: { app: { status: 'multa_aplicada', pagoVencimientoAt: { lt: new Date() } } },
+      select: { identificador: true, clienteId: true },
     });
 
-    for (const purchase of expired) {
-      await prisma.$transaction([
-        prisma.purchase.update({ where: { id: purchase.id }, data: { status: 'derivado_justicia' } }),
-        prisma.user.update({ where: { id: purchase.buyerId }, data: { status: 'bloqueado' } }),
-      ]);
+    for (const registro of expired) {
+      await prisma.registroDeSubasta.update({
+        where: { identificador: registro.identificador },
+        data: { app: { update: { status: 'derivado_justicia' } } },
+      });
 
-      await messageService.create(
-        purchase.buyerId,
-        'Tu caso fue derivado a la justicia',
-        'No cumpliste con el pago en el plazo estipulado. Tu cuenta ha sido bloqueada y el caso fue derivado a la justicia.',
-        'multa'
-      );
+      if (registro.clienteId) {
+        await prisma.personaApp.update({
+          where: { personaId: registro.clienteId },
+          data: { registrationStatus: 'bloqueado' },
+        });
+        await messageService.create(
+          registro.clienteId,
+          'Tu caso fue derivado a la justicia',
+          'No cumpliste con el pago en el plazo estipulado. Tu cuenta ha sido bloqueada y el caso fue derivado a la justicia.',
+          'multa',
+        );
+      }
     }
 
     return expired.length;
   },
 
-  async markPaid(id: string) {
-    const purchase = await prisma.purchase.findUnique({ where: { id } });
-    if (!purchase) throw { status: 404, message: 'Compra no encontrada' };
-    const updated = await prisma.purchase.update({ where: { id }, data: { status: 'pagado' } });
-    await categoryService.evaluateUpgrade(purchase.buyerId);
-    return updated;
+  async markPaid(id: number) {
+    const registro = await prisma.registroDeSubasta.findUnique({ where: { identificador: id } });
+    if (!registro) throw { status: 404, message: 'Compra no encontrada' };
+    const updated = await prisma.registroDeSubasta.update({
+      where: { identificador: id },
+      data: { app: { update: { status: 'pagado' } } },
+      include: { app: true },
+    });
+    if (registro.clienteId) await categoryService.evaluateUpgrade(registro.clienteId);
+    return { ...updated, ...updated.app };
   },
 };

@@ -7,275 +7,463 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-enum UserCategory {
-  comun
-  especial
-  plata
-  oro
-  platino
+// ─────────────────────────────────────────────────────────────────────────────
+// TABLAS CORE — estructura EXACTA de EstructuraActual.sql.
+// No agregar columnas a estas tablas: todo atributo de app vive en su tabla
+// "*_app" de extensión (1:1). Los nombres de columna se mapean a los del SQL
+// legacy con @map donde el nombre del campo Prisma difiere.
+// Los campos 'si'/'no' se guardan como varchar(2) (decisión del usuario); el
+// back convierte ↔ boolean en la capa de servicios (utils/siNo.ts).
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Pais {
+  numero       Int     @id
+  nombre       String  @db.VarChar(250)
+  nombreCorto  String? @db.VarChar(250)
+  capital      String  @db.VarChar(250)
+  nacionalidad String  @db.VarChar(250)
+  idiomas      String  @db.VarChar(150)
+
+  clientes Cliente[]
+
+  @@map("paises")
 }
 
-enum UserStatus {
-  pendiente
-  aprobado
-  suspendido
-  bloqueado
-}
+model Persona {
+  identificador Int     @id @default(autoincrement())
+  documento     String  @default("") @db.VarChar(20)
+  nombre        String  @db.VarChar(150)
+  direccion     String? @db.VarChar(250)
+  estado        String? @db.VarChar(15)
+  foto          Bytes?
 
-enum AuctionStatus {
-  programada
-  abierta
-  cerrada
-  finalizada
-}
-
-enum AuctionCategory {
-  comun
-  especial
-  plata
-  oro
-  platino
-}
-
-enum Currency {
-  ARS
-  USD
-}
-
-enum ItemStatus {
-  disponible
-  en_subasta
-  vendido
-}
-
-enum PaymentType {
-  cuenta_bancaria_nacional
-  cuenta_bancaria_extranjera
-  tarjeta_credito_nacional
-  tarjeta_credito_internacional
-  cheque_certificado
-}
-
-enum SubmissionStatus {
-  pendiente_empresa
-  interesada
-  rechazada_empresa
-  precio_propuesto
-  aceptada_usuario
-  rechazada_usuario
-}
-
-enum PurchaseStatus {
-  pendiente_pago
-  pagado
-  multa_aplicada
-  derivado_justicia
-}
-
-model User {
-  id                String        @id @default(cuid())
-  nombre            String
-  apellido          String
-  email             String?       @unique
-  passwordHash      String?
-  docFrenteUrl      String
-  docDorsoUrl       String
-  domicilioLegal    String
-  paisOrigen        String
-  categoria         UserCategory  @default(comun)
-  status            UserStatus    @default(pendiente)
-  registrationToken String?
-  tokenExpiresAt    DateTime?
-  isAdmin           Boolean       @default(false)
-  cuentaCobro       String?
-  createdAt         DateTime      @default(now())
-  updatedAt         DateTime      @updatedAt
+  app        PersonaApp?
+  cliente    Cliente?
+  empleado   Empleado?
+  duenio     Duenio?
+  subastador Subastador?
 
   paymentMethods PaymentMethod[]
-  bids           Puja[]
-  participants   AuctionParticipant[]
-  messages       Mensaje[]
+  mensajes       Mensaje[]
   submissions    ItemSubmission[]
-  purchases      Purchase[]
-  ownedItems     Item[]          @relation("CurrentOwner")
-  createdAuctions Auction[]      @relation("CreatedAuctions")
-  favorites      AuctionFavorite[]
-  registrosComoDuenio  RegistroDeSubasta[] @relation("RegistroDuenio")
-  registrosComoCliente RegistroDeSubasta[] @relation("RegistroCliente")
 
-  @@map("users")
+  @@map("personas")
 }
 
+model Empleado {
+  identificador Int     @id
+  persona       Persona @relation(fields: [identificador], references: [identificador])
+  cargo         String? @db.VarChar(100)
+  sectorId      Int?    @map("sector")
+  sector        Sector? @relation("EmpleadoEnSector", fields: [sectorId], references: [identificador])
+
+  sectoresACargo      Sector[]   @relation("SectorResponsable")
+  catalogos           Catalogo[]
+  productosRevisados  Producto[] @relation("ProductoRevisor")
+  clientesVerificados Cliente[]  @relation("ClienteVerificador")
+  dueniosVerificados  Duenio[]   @relation("DuenioVerificador")
+
+  @@map("empleados")
+}
+
+model Sector {
+  identificador     Int       @id @default(autoincrement())
+  nombreSector      String    @db.VarChar(150)
+  codigoSector      String?   @db.VarChar(10)
+  responsableSector Int?
+  responsable       Empleado? @relation("SectorResponsable", fields: [responsableSector], references: [identificador])
+
+  empleados Empleado[] @relation("EmpleadoEnSector")
+
+  @@map("sectores")
+}
+
+model Seguro {
+  nroPoliza       String  @id @db.VarChar(30)
+  compania        String  @db.VarChar(150)
+  polizaCombinada String? @db.VarChar(2)
+  importe         Decimal @db.Decimal(18, 2)
+
+  productos Producto[]
+
+  @@map("seguros")
+}
+
+model Cliente {
+  identificador Int      @id
+  persona       Persona  @relation(fields: [identificador], references: [identificador])
+  numeroPais    Int?
+  pais          Pais?    @relation(fields: [numeroPais], references: [numero])
+  admitido      String?  @db.VarChar(2)
+  categoria     String?  @db.VarChar(10)
+  verificadorId Int      @map("verificador")
+  verificador   Empleado @relation("ClienteVerificador", fields: [verificadorId], references: [identificador])
+
+  asistentes Asistente[]
+  registros  RegistroDeSubasta[] @relation("RegistroCliente")
+  favorites  AuctionFavorite[]
+
+  @@map("clientes")
+}
+
+model Duenio {
+  identificador          Int      @id
+  persona                Persona  @relation(fields: [identificador], references: [identificador])
+  numeroPais             Int?
+  verificacionFinanciera String?  @db.VarChar(2)
+  verificacionJudicial   String?  @db.VarChar(2)
+  calificacionRiesgo     Int?
+  verificadorId          Int      @map("verificador")
+  verificador            Empleado @relation("DuenioVerificador", fields: [verificadorId], references: [identificador])
+
+  productos Producto[]
+  registros RegistroDeSubasta[] @relation("RegistroDuenio")
+
+  @@map("duenios")
+}
+
+model Subastador {
+  identificador Int     @id
+  persona       Persona @relation(fields: [identificador], references: [identificador])
+  matricula     String? @db.VarChar(15)
+  region        String? @db.VarChar(50)
+
+  app      SubastadorApp?
+  subastas Subasta[]
+
+  @@map("subastadores")
+}
+
+model Subasta {
+  identificador       Int         @id @default(autoincrement())
+  fecha               DateTime?   @db.Date
+  hora                DateTime    @db.Time
+  estado              String?     @db.VarChar(10)
+  subastadorId        Int?        @map("subastador")
+  subastador          Subastador? @relation(fields: [subastadorId], references: [identificador])
+  ubicacion           String?     @db.VarChar(350)
+  capacidadAsistentes Int?
+  tieneDeposito       String?     @db.VarChar(2)
+  seguridadPropia     String?     @db.VarChar(2)
+  categoria           String?     @db.VarChar(10)
+
+  app        SubastaApp?
+  catalogos  Catalogo[]
+  asistentes Asistente[]
+  registros  RegistroDeSubasta[]
+  favorites  AuctionFavorite[]
+
+  @@map("subastas")
+}
+
+model Producto {
+  identificador       Int       @id @default(autoincrement())
+  fecha               DateTime? @db.Date
+  disponible          String?   @db.VarChar(2)
+  descripcionCatalogo String?   @default("No Posee") @db.VarChar(500)
+  descripcionCompleta String    @default("") @db.VarChar(300)
+  revisorId           Int       @map("revisor")
+  revisor             Empleado  @relation("ProductoRevisor", fields: [revisorId], references: [identificador])
+  duenioId            Int       @map("duenio")
+  duenio              Duenio    @relation(fields: [duenioId], references: [identificador])
+  nroPoliza           String?   @map("seguro") @db.VarChar(30)
+  seguro              Seguro?   @relation(fields: [nroPoliza], references: [nroPoliza])
+
+  app           ProductoApp?
+  fotos         Foto[]
+  itemsCatalogo ItemCatalogo[]
+  registros     RegistroDeSubasta[]
+
+  @@map("productos")
+}
+
+model Foto {
+  identificador Int      @id @default(autoincrement())
+  productoId    Int      @map("producto")
+  producto      Producto @relation(fields: [productoId], references: [identificador])
+  foto          Bytes?
+
+  app FotoApp?
+
+  @@map("fotos")
+}
+
+model Catalogo {
+  identificador Int       @id @default(autoincrement())
+  descripcion   String    @db.VarChar(250)
+  subastaId     Int?      @map("subasta")
+  subasta       Subasta?  @relation(fields: [subastaId], references: [identificador])
+  responsableId Int       @map("responsable")
+  responsable   Empleado  @relation(fields: [responsableId], references: [identificador])
+
+  items ItemCatalogo[]
+
+  @@map("catalogos")
+}
+
+model ItemCatalogo {
+  identificador Int      @id @default(autoincrement())
+  catalogoId    Int      @map("catalogo")
+  catalogo      Catalogo @relation(fields: [catalogoId], references: [identificador])
+  productoId    Int      @map("producto")
+  producto      Producto @relation(fields: [productoId], references: [identificador])
+  precioBase    Decimal  @db.Decimal(18, 2)
+  comision      Decimal  @db.Decimal(18, 2)
+  subastado     String?  @db.VarChar(2)
+
+  app   ItemCatalogoApp?
+  pujos Pujo[]
+
+  @@map("itemsCatalogo")
+}
+
+model Asistente {
+  identificador Int     @id @default(autoincrement())
+  numeroPostor  Int     @default(0)
+  clienteId     Int     @map("cliente")
+  cliente       Cliente @relation(fields: [clienteId], references: [identificador])
+  subastaId     Int     @map("subasta")
+  subasta       Subasta @relation(fields: [subastaId], references: [identificador])
+
+  app   AsistenteApp?
+  pujos Pujo[]
+
+  @@unique([subastaId, clienteId])
+  @@map("asistentes")
+}
+
+model Pujo {
+  identificador Int          @id @default(autoincrement())
+  asistenteId   Int          @map("asistente")
+  asistente     Asistente    @relation(fields: [asistenteId], references: [identificador])
+  itemId        Int          @map("item")
+  item          ItemCatalogo @relation(fields: [itemId], references: [identificador])
+  importe       Decimal      @db.Decimal(18, 2)
+  ganador       String       @default("no") @db.VarChar(2)
+
+  app PujoApp?
+
+  @@map("pujos")
+}
+
+model RegistroDeSubasta {
+  identificador Int      @id @default(autoincrement())
+  subastaId     Int      @map("subasta")
+  subasta       Subasta  @relation(fields: [subastaId], references: [identificador])
+  duenioId      Int      @map("duenio")
+  duenio        Duenio   @relation("RegistroDuenio", fields: [duenioId], references: [identificador])
+  productoId    Int      @map("producto")
+  producto      Producto @relation(fields: [productoId], references: [identificador])
+  clienteId     Int      @map("cliente")
+  cliente       Cliente  @relation("RegistroCliente", fields: [clienteId], references: [identificador])
+  importe       Decimal  @db.Decimal(18, 2)
+  comision      Decimal  @db.Decimal(18, 2)
+
+  app RegistroDeSubastaApp?
+
+  @@map("registroDeSubasta")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TABLAS DE EXTENSIÓN (1:1) — atributos de app que NO están en el SQL legacy.
+// PK = FK al core. La API sigue exponiendo estos campos aplanados en la
+// respuesta (ver mappers en los servicios).
+// ─────────────────────────────────────────────────────────────────────────────
+
+model PersonaApp {
+  personaId          Int       @id @map("persona_id")
+  persona            Persona   @relation(fields: [personaId], references: [identificador], onDelete: Cascade)
+  apellido           String    @default("") @db.VarChar(150)
+  email              String?   @unique
+  passwordHash       String?
+  isAdmin            Boolean   @default(false)
+  registrationToken  String?
+  tokenExpiresAt     DateTime?
+  registrationStatus String    @default("pendiente") @db.VarChar(20)
+  cuentaCobro        String?
+  docFrenteUrl       String?
+  docDorsoUrl        String?
+  paisOrigen         String?   @db.VarChar(100)
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  @@map("personas_app")
+}
+
+model SubastadorApp {
+  subastadorId Int        @id @map("subastador_id")
+  subastador   Subastador @relation(fields: [subastadorId], references: [identificador], onDelete: Cascade)
+  activo       Boolean    @default(true)
+  email        String?
+
+  @@map("subastadores_app")
+}
+
+model SubastaApp {
+  subastaId         Int       @id @map("subasta_id")
+  subasta           Subasta   @relation(fields: [subastaId], references: [identificador], onDelete: Cascade)
+  titulo            String    @default("")
+  descripcion       String?
+  fechaHora         DateTime?
+  moneda            String?   @db.VarChar(3)
+  esColeccion       Boolean   @default(false)
+  nombreColeccion   String?
+  currentItemId     Int?
+  currentItemEndsAt DateTime?
+  createdById       Int?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@map("subastas_app")
+}
+
+model ProductoApp {
+  productoId           Int             @id @map("producto_id")
+  producto             Producto        @relation(fields: [productoId], references: [identificador], onDelete: Cascade)
+  numeroPieza          String          @unique @default("")
+  esObraDeArte         Boolean         @default(false)
+  artista              String?
+  fechaObra            String?
+  historia             String?
+  cantidadElementos    Int             @default(1)
+  descripcionElementos String?
+  status               String          @default("disponible") @db.VarChar(20)
+  deposito             String?
+  ubicacion            String?
+  submissionId         String?         @unique
+  submission           ItemSubmission? @relation(fields: [submissionId], references: [id])
+  createdAt            DateTime        @default(now())
+  updatedAt            DateTime        @updatedAt
+
+  @@map("productos_app")
+}
+
+model ItemCatalogoApp {
+  itemCatalogoId Int          @id @map("item_catalogo_id")
+  item           ItemCatalogo @relation(fields: [itemCatalogoId], references: [identificador], onDelete: Cascade)
+  ordenEnSubasta Int?
+  status         String       @default("en_subasta") @db.VarChar(20)
+
+  @@map("items_catalogo_app")
+}
+
+model AsistenteApp {
+  asistenteId Int       @id @map("asistente_id")
+  asistente   Asistente @relation(fields: [asistenteId], references: [identificador], onDelete: Cascade)
+  isActive    Boolean   @default(true)
+  joinedAt    DateTime  @default(now())
+  leftAt      DateTime?
+
+  @@map("asistentes_app")
+}
+
+model PujoApp {
+  pujoId          Int      @id @map("pujo_id")
+  pujo            Pujo     @relation(fields: [pujoId], references: [identificador], onDelete: Cascade)
+  confirmada      Boolean  @default(false)
+  moneda          String   @default("ARS") @db.VarChar(3)
+  paymentMethodId String?
+  createdAt       DateTime @default(now())
+
+  @@map("pujos_app")
+}
+
+model RegistroDeSubastaApp {
+  registroId          Int               @id @map("registro_id")
+  registro            RegistroDeSubasta @relation(fields: [registroId], references: [identificador], onDelete: Cascade)
+  moneda              String            @default("ARS") @db.VarChar(3)
+  status              String            @default("pendiente_pago") @db.VarChar(20)
+  paymentMethodId     String?
+  multa               Decimal?          @db.Decimal(18, 2)
+  multaAplicadaAt     DateTime?
+  pagoVencimientoAt   DateTime?
+  retiraPersonalmente Boolean           @default(false)
+  costoEnvio          Decimal?          @db.Decimal(18, 2)
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+
+  @@map("registro_subasta_app")
+}
+
+model FotoApp {
+  fotoId Int     @id @map("foto_id")
+  foto   Foto    @relation(fields: [fotoId], references: [identificador], onDelete: Cascade)
+  url    String?
+  orden  Int     @default(0)
+
+  @@map("fotos_app")
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TABLAS DE APP (no en el SQL legacy, permitidas como tablas nuevas).
+// ─────────────────────────────────────────────────────────────────────────────
+
 model PaymentMethod {
-  id             String      @id @default(cuid())
-  userId         String
-  user           User        @relation(fields: [userId], references: [id])
-  tipo           PaymentType
-  moneda         Currency
+  id             String   @id @default(cuid())
+  personaId      Int
+  persona        Persona  @relation(fields: [personaId], references: [identificador])
+  tipo           String   @db.VarChar(50)
+  moneda         String   @db.VarChar(3)
   banco          String?
   numeroCuenta   String?
   swift          String?
   numeroTarjeta  String?
   titularTarjeta String?
   vencimiento    String?
-  montoGarantia  Decimal?    @db.Decimal(12, 2)
-  verificado     Boolean     @default(false)
-  activo         Boolean     @default(true)
-  createdAt      DateTime    @default(now())
-  updatedAt      DateTime    @updatedAt
+  montoGarantia  Decimal? @db.Decimal(12, 2)
+  verificado     Boolean  @default(false)
+  activo         Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
   @@map("payment_methods")
 }
 
-model Rematador {
-  id        String    @id @default(cuid())
-  nombre    String
-  apellido  String
-  matricula String    @unique
-  email     String?
-  activo    Boolean   @default(true)
-  createdAt DateTime  @default(now())
-
-  auctions Auction[]
-
-  @@map("rematadores")
-}
-
-model Auction {
-  id              String          @id @default(cuid())
-  titulo          String
-  descripcion     String?
-  fechaHora       DateTime
-  ubicacion       String
-  categoria       AuctionCategory
-  moneda          Currency
-  status          AuctionStatus   @default(programada)
-  esColeccion     Boolean         @default(false)
-  nombreColeccion String?
-  rematadorId     String
-  rematador       Rematador       @relation(fields: [rematadorId], references: [id])
-  currentItemId   String?
-  currentItemEndsAt DateTime?
-  createdById     String?
-  creator         User?           @relation("CreatedAuctions", fields: [createdById], references: [id])
-  createdAt       DateTime        @default(now())
-  updatedAt       DateTime        @updatedAt
-
-  items        Item[]
-  bids         Puja[]
-  participants AuctionParticipant[]
-  favorites    AuctionFavorite[]
-  catalogos    Catalogo[]
-  registros    RegistroDeSubasta[]
-
-  @@map("auctions")
-}
-
 model AuctionFavorite {
   id        String   @id @default(cuid())
-  userId    String
-  user      User     @relation(fields: [userId], references: [id])
-  auctionId String
-  auction   Auction  @relation(fields: [auctionId], references: [id])
+  clienteId Int
+  cliente   Cliente  @relation(fields: [clienteId], references: [identificador])
+  subastaId Int
+  subasta   Subasta  @relation(fields: [subastaId], references: [identificador])
   createdAt DateTime @default(now())
 
-  @@unique([userId, auctionId])
+  @@unique([clienteId, subastaId])
   @@map("auction_favorites")
 }
 
-model Item {
-  id                   String     @id @default(cuid())
-  numeroPieza          String     @unique
-  descripcion          String
-  precioBase           Decimal    @db.Decimal(12, 2)
-  status               ItemStatus @default(disponible)
-  currentOwnerId       String
-  currentOwner         User       @relation("CurrentOwner", fields: [currentOwnerId], references: [id])
-  auctionId            String?
-  auction              Auction?   @relation(fields: [auctionId], references: [id])
-  ordenEnSubasta       Int?
-  esObraDeArte         Boolean    @default(false)
-  artista              String?
-  fechaObra            String?
-  historia             String?
-  cantidadElementos    Int        @default(1)
-  descripcionElementos String?
-  createdAt            DateTime   @default(now())
-  updatedAt            DateTime   @updatedAt
-
-  images       ItemImage[]
-  bids         Puja[]
-  insurance    Seguro?
-  ubicacion    ItemUbicacion?
-  submissionId String?        @unique
-  submission   ItemSubmission? @relation(fields: [submissionId], references: [id])
-  purchase     Purchase?
-  itemsCatalogo ItemCatalogo[]
-  registros     RegistroDeSubasta[]
-
-  @@map("items")
-}
-
-model ItemImage {
-  id     String @id @default(cuid())
-  itemId String
-  item   Item   @relation(fields: [itemId], references: [id])
-  url    String
-  orden  Int    @default(0)
-
-  @@map("item_images")
-}
-
-model Puja {
-  id         String   @id @default(cuid())
-  auctionId  String
-  auction    Auction  @relation(fields: [auctionId], references: [id])
-  itemId     String
-  item       Item     @relation(fields: [itemId], references: [id])
-  userId     String
-  user       User     @relation(fields: [userId], references: [id])
-  monto      Decimal  @db.Decimal(12, 2)
-  moneda     Currency
-  confirmada Boolean  @default(false)
-  createdAt  DateTime @default(now())
-
-  @@index([itemId, createdAt])
-  @@map("pujas")
-}
-
-model AuctionParticipant {
+model Mensaje {
   id        String   @id @default(cuid())
-  auctionId String
-  auction   Auction  @relation(fields: [auctionId], references: [id])
-  userId    String
-  user      User     @relation(fields: [userId], references: [id])
-  isActive  Boolean  @default(true)
-  joinedAt  DateTime @default(now())
-  leftAt    DateTime?
+  personaId Int
+  persona   Persona  @relation(fields: [personaId], references: [identificador])
+  asunto    String
+  cuerpo    String
+  tipo      String
+  leido     Boolean  @default(false)
+  createdAt DateTime @default(now())
 
-  @@unique([auctionId, userId])
-  @@map("auction_participants")
+  @@map("mensajes")
 }
 
 model ItemSubmission {
-  id                   String           @id @default(cuid())
-  userId               String
-  user                 User             @relation(fields: [userId], references: [id])
+  id                   String    @id @default(cuid())
+  personaId            Int
+  persona              Persona   @relation(fields: [personaId], references: [identificador])
   descripcion          String
   datosHistoricos      String?
-  declaracionPropiedad Boolean          @default(false)
-  origenLicito         Boolean          @default(false)
-  status               SubmissionStatus @default(pendiente_empresa)
-  precioBaseOfrecido   Decimal?         @db.Decimal(12, 2)
+  declaracionPropiedad Boolean   @default(false)
+  origenLicito         Boolean   @default(false)
+  status               String    @default("pendiente_empresa") @db.VarChar(30)
+  precioSugerido       Decimal?  @db.Decimal(12, 2)
+  precioBaseOfrecido   Decimal?  @db.Decimal(12, 2)
   comisionesInfo       String?
   motivoRechazo        String?
-  gastoDevolucion      Decimal?         @db.Decimal(12, 2)
+  gastoDevolucion      Decimal?  @db.Decimal(12, 2)
   cuentaCobro          String?
-  createdAt            DateTime         @default(now())
-  updatedAt            DateTime         @updatedAt
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
 
-  images SubmissionImage[]
-  item   Item?
+  images   SubmissionImage[]
+  producto ProductoApp?
 
   @@map("item_submissions")
 }
@@ -288,149 +476,4 @@ model SubmissionImage {
   orden        Int            @default(0)
 
   @@map("submission_images")
-}
-
-model Seguro {
-  id             String    @id @default(cuid())
-  itemId         String    @unique
-  item           Item      @relation(fields: [itemId], references: [id])
-  polizaNumero   String
-  polizaGrupoId  String?
-  valorAsegurado Decimal   @db.Decimal(12, 2)
-  beneficiarioId String
-  proveedor      String
-  contacto       String?
-  vencimiento    DateTime?
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
-
-  @@map("seguros")
-}
-
-model ItemUbicacion {
-  id        String   @id @default(cuid())
-  itemId    String   @unique
-  item      Item     @relation(fields: [itemId], references: [id])
-  deposito  String
-  sector    String?
-  notas     String?
-  updatedAt DateTime @updatedAt
-
-  @@map("item_ubicaciones")
-}
-
-model Mensaje {
-  id        String   @id @default(cuid())
-  userId    String
-  user      User     @relation(fields: [userId], references: [id])
-  asunto    String
-  cuerpo    String
-  tipo      String
-  leido     Boolean  @default(false)
-  createdAt DateTime @default(now())
-
-  @@map("mensajes")
-}
-
-model Purchase {
-  id                  String         @id @default(cuid())
-  itemId              String         @unique
-  item                Item           @relation(fields: [itemId], references: [id])
-  buyerId             String
-  buyer               User           @relation(fields: [buyerId], references: [id])
-  montoGanador        Decimal        @db.Decimal(12, 2)
-  moneda              Currency
-  comisiones          Decimal        @db.Decimal(12, 2) @default(0)
-  costoEnvio          Decimal?       @db.Decimal(12, 2)
-  retiraPersonalmente Boolean        @default(false)
-  status              PurchaseStatus @default(pendiente_pago)
-  multa               Decimal?       @db.Decimal(12, 2)
-  multaAplicadaAt     DateTime?
-  pagoVencimientoAt   DateTime?
-  createdAt           DateTime       @default(now())
-  updatedAt           DateTime       @updatedAt
-
-  @@map("purchases")
-}
-
-model Pais {
-  numero       Int     @id
-  nombre       String
-  nombreCorto  String?
-  capital      String
-  nacionalidad String
-  idiomas      String
-
-  @@map("paises")
-}
-
-model Empleado {
-  id        String   @id @default(cuid())
-  nombre    String
-  apellido  String
-  cargo     String?
-  sectorId  String?
-  sector    Sector?  @relation("EmpleadoSector", fields: [sectorId], references: [id])
-  createdAt DateTime @default(now())
-
-  sectoresACargo Sector[]   @relation("SectorResponsable")
-  catalogos      Catalogo[]
-
-  @@map("empleados")
-}
-
-model Sector {
-  id            String    @id @default(cuid())
-  nombreSector  String
-  codigoSector  String?
-  responsableId String?
-  responsable   Empleado? @relation("SectorResponsable", fields: [responsableId], references: [id])
-
-  empleados Empleado[] @relation("EmpleadoSector")
-
-  @@map("sectores")
-}
-
-model Catalogo {
-  id            String   @id @default(cuid())
-  descripcion   String
-  auctionId     String?
-  auction       Auction? @relation(fields: [auctionId], references: [id])
-  responsableId String
-  responsable   Empleado @relation(fields: [responsableId], references: [id])
-  createdAt     DateTime @default(now())
-
-  items ItemCatalogo[]
-
-  @@map("catalogos")
-}
-
-model ItemCatalogo {
-  id         String   @id @default(cuid())
-  catalogoId String
-  catalogo   Catalogo @relation(fields: [catalogoId], references: [id])
-  itemId     String
-  item       Item     @relation(fields: [itemId], references: [id])
-  precioBase Decimal  @db.Decimal(18, 2)
-  comision   Decimal  @db.Decimal(18, 2)
-  subastado  Boolean  @default(false)
-
-  @@map("items_catalogo")
-}
-
-model RegistroDeSubasta {
-  id        String   @id @default(cuid())
-  auctionId String
-  auction   Auction  @relation(fields: [auctionId], references: [id])
-  itemId    String
-  item      Item     @relation(fields: [itemId], references: [id])
-  duenioId  String
-  duenio    User     @relation("RegistroDuenio", fields: [duenioId], references: [id])
-  clienteId String
-  cliente   User     @relation("RegistroCliente", fields: [clienteId], references: [id])
-  importe   Decimal  @db.Decimal(18, 2)
-  comision  Decimal  @db.Decimal(18, 2)
-  createdAt DateTime @default(now())
-
-  @@map("registro_de_subasta")
 }

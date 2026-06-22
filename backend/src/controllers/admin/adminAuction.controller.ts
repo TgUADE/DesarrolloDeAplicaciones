@@ -1,24 +1,19 @@
 import { Request, Response } from 'express';
 import { auctionService } from '../../services/auction.service';
-import { ok, created, notFound, serverError } from '../../utils/apiResponse';
-import { AuctionCategory, Currency } from '@prisma/client';
+import { ok, created, serverError } from '../../utils/apiResponse';
 
 export const adminAuctionController = {
   async create(req: Request, res: Response) {
     try {
       const { titulo, descripcion, fechaHora, ubicacion, categoria, moneda, rematadorId, esColeccion, nombreColeccion } = req.body;
-      const auction = await auctionService.create({
-        titulo, descripcion, fechaHora: new Date(fechaHora),
-        ubicacion, categoria: categoria as AuctionCategory,
-        moneda: moneda as Currency, rematadorId, esColeccion, nombreColeccion,
-      });
+      const auction = await auctionService.create({ titulo, descripcion, fechaHora: new Date(fechaHora), ubicacion, categoria, moneda, rematadorId, esColeccion, nombreColeccion });
       return created(res, auction);
-    } catch (err: any) { return serverError(res, err.message); }
+    } catch (err: any) { return res.status(err.status || 500).json({ success: false, error: err.message }); }
   },
 
   async update(req: Request, res: Response) {
     try {
-      const auction = await auctionService.update(req.params.id, req.body);
+      const auction = await auctionService.update(parseInt(req.params.id), req.body);
       return ok(res, auction);
     } catch (err: any) { return serverError(res, err.message); }
   },
@@ -26,45 +21,37 @@ export const adminAuctionController = {
   async setStatus(req: Request, res: Response) {
     try {
       const { status } = req.body;
-      const auction = await auctionService.update(req.params.id, { status });
+      const auction = await auctionService.update(parseInt(req.params.id), { status });
       return ok(res, auction);
     } catch (err: any) { return serverError(res, err.message); }
   },
 
   async start(req: Request, res: Response) {
     try {
-      const auction = await auctionService.startAuction(req.params.id);
+      const auction = await auctionService.startAuction(parseInt(req.params.id));
       return ok(res, auction);
     } catch (err: any) {
-      const status = err.status || 500;
-      return res.status(status).json({ success: false, error: err.message });
+      return res.status(err.status || 500).json({ success: false, error: err.message });
     }
   },
 
   async closeItem(req: Request, res: Response) {
     try {
-      const result = await auctionService.closeItem(req.params.id);
+      const result = await auctionService.closeItem(parseInt(req.params.id));
       const io = (req.app as any).get('io');
-      if (io) {
-        io.to(`auction:${req.params.id}`).emit('item:sold', {
-          closedItemId: result.closedItemId,
-          purchase: result.purchase,
-        });
-      }
+      if (io) io.to(`auction:${req.params.id}`).emit('item:sold', { closedItemId: result.closedItemId, purchase: result.purchase });
       return ok(res, result);
     } catch (err: any) {
-      const status = err.status || 500;
-      return res.status(status).json({ success: false, error: err.message });
+      return res.status(err.status || 500).json({ success: false, error: err.message });
     }
   },
 
   async addItem(req: Request, res: Response) {
     try {
-      const item = await auctionService.addItem(req.params.id, req.body.itemId);
+      const item = await auctionService.addItem(parseInt(req.params.id), parseInt(req.body.itemId), req.body.precioBase, req.body.comision);
       return ok(res, item);
     } catch (err: any) {
-      const status = err.status || 500;
-      return res.status(status).json({ success: false, error: err.message });
+      return res.status(err.status || 500).json({ success: false, error: err.message });
     }
   },
 };

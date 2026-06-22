@@ -1,142 +1,143 @@
 import { prisma } from '../config/prisma';
 import { getPagination } from '../utils/pagination';
+import { subastaInclude, mapSubasta } from './auction.service';
+import { flattenProducto } from '../utils/flatten';
+import { fromSiNo } from '../utils/siNo';
 import { Request } from 'express';
 
 export const userService = {
-  async findById(id: string) {
-    return prisma.user.findUnique({
-      where: { id },
-      select: {
-        id: true, nombre: true, apellido: true, email: true,
-        domicilioLegal: true, paisOrigen: true, categoria: true,
-        status: true, isAdmin: true, cuentaCobro: true,
-        createdAt: true, updatedAt: true,
-      },
+  async findById(id: number) {
+    const persona = await prisma.persona.findUnique({
+      where: { identificador: id },
+      include: { cliente: true, app: true },
     });
-  },
-
-  async update(id: string, data: { domicilioLegal?: string; cuentaCobro?: string }) {
-    return prisma.user.update({ where: { id }, data });
-  },
-
-  async getMetrics(userId: string) {
-    const [participaciones, victorias, bids] = await Promise.all([
-      prisma.auctionParticipant.count({ where: { userId } }),
-      prisma.purchase.count({ where: { buyerId: userId, status: 'pagado' } }),
-      prisma.puja.findMany({
-        where: { userId, confirmada: true },
-        select: { monto: true, moneda: true },
-      }),
-    ]);
-
-    const purchases = await prisma.purchase.findMany({
-      where: { buyerId: userId },
-      select: { montoGanador: true, comisiones: true, moneda: true },
-    });
-
-    const totalPagadoARS = purchases
-      .filter(p => p.moneda === 'ARS')
-      .reduce((sum, p) => sum + Number(p.montoGanador) + Number(p.comisiones), 0);
-
-    const totalPagadoUSD = purchases
-      .filter(p => p.moneda === 'USD')
-      .reduce((sum, p) => sum + Number(p.montoGanador) + Number(p.comisiones), 0);
-
-    const totalOfertadoARS = bids
-      .filter(b => b.moneda === 'ARS')
-      .reduce((sum, b) => sum + Number(b.monto), 0);
-
-    const totalOfertadoUSD = bids
-      .filter(b => b.moneda === 'USD')
-      .reduce((sum, b) => sum + Number(b.monto), 0);
-
+    if (!persona) return null;
     return {
-      totalParticipaciones: participaciones,
-      totalVictorias: victorias,
-      totalPagadoARS,
-      totalPagadoUSD,
-      totalOfertadoARS,
-      totalOfertadoUSD,
+      id: persona.identificador.toString(),
+      nombre: persona.nombre,
+      apellido: persona.app?.apellido ?? '',
+      email: persona.app?.email ?? null,
+      direccion: persona.direccion,
+      cuentaCobro: persona.app?.cuentaCobro ?? null,
+      categoria: persona.cliente?.categoria ?? 'comun',
+      status: persona.app?.registrationStatus ?? 'pendiente',
+      isAdmin: persona.app?.isAdmin ?? false,
+      createdAt: persona.app?.createdAt ?? null,
+      updatedAt: persona.app?.updatedAt ?? null,
     };
   },
 
-  async getAuctionHistory(userId: string, req: Request) {
-    const { skip, take, page } = getPagination(req) as any;
-    const [auctions, total] = await Promise.all([
-      prisma.auctionParticipant.findMany({
-        where: { userId },
-        skip,
-        take,
-        include: {
-          auction: {
-            include: {
-              rematador: true,
-              items: {
-                take: 1,
-                orderBy: { ordenEnSubasta: 'asc' },
-                select: { id: true, images: { take: 1, orderBy: { orden: 'asc' }, select: { url: true } } },
-              },
-            },
-          },
-        },
-        orderBy: { joinedAt: 'desc' },
-      }),
-      prisma.auctionParticipant.count({ where: { userId } }),
-    ]);
-    return { auctions: auctions.map(p => p.auction), total, page };
-  },
-
-  /** Unión de subastas favoritas y participadas del usuario (para "Mis subastas"). */
-  async getMyAuctions(userId: string) {
-    const cover = {
-      rematador: true,
-      _count: { select: { items: true, participants: true } },
-      items: {
-        take: 1,
-        orderBy: { ordenEnSubasta: 'asc' as const },
-        select: { id: true, images: { take: 1, orderBy: { orden: 'asc' as const }, select: { url: true } } },
+  async update(id: number, data: { domicilioLegal?: string; cuentaCobro?: string }) {
+    return prisma.persona.update({
+      where: { identificador: id },
+      data: {
+        direccion: data.domicilioLegal,
+        app: { update: { cuentaCobro: data.cuentaCobro } },
       },
-    };
+    });
+  },
 
+  async getMetrics(personaId: number) {
+    const [participaciones, victorias, pujos] = await Promise.all([
+      prisma.asistente.count({ where: { clienteId: personaId } }),
+      prisma.registroDeSubasta.count({ where: { clienteId: personaId, app: { status: 'pagado' } } }),
+      prisma.pujo.findMany({
+        where: { asistente: { clienteId: personaId }, app: { confirmada: true } },
+        select: { importe: true, app: { select: { moneda: true } } },
+      }),
+    ]);
+
+    const registros = await prisma.registroDeSubasta.findMany({
+      where: { clienteId: personaId },
+      select: { importe: true, comision: true, app: { select: { moneda: true } } },
+    });
+
+    const totalPagadoARS = registros
+      .filter((r) => r.app?.moneda === 'ARS')
+      .reduce((s, r) => s + Number(r.importe) + Number(r.comision), 0);
+    const totalPagadoUSD = registros
+      .filter((r) => r.app?.moneda === 'USD')
+      .reduce((s, r) => s + Number(r.importe) + Number(r.comision), 0);
+    const totalOfertadoARS = pujos.filter((b) => b.app?.moneda === 'ARS').reduce((s, b) => s + Number(b.importe), 0);
+    const totalOfertadoUSD = pujos.filter((b) => b.app?.moneda === 'USD').reduce((s, b) => s + Number(b.importe), 0);
+
+    return { totalParticipaciones: participaciones, totalVictorias: victorias, totalPagadoARS, totalPagadoUSD, totalOfertadoARS, totalOfertadoUSD };
+  },
+
+  async getAuctionHistory(personaId: number, req: Request) {
+    const { skip, limit, page } = getPagination(req);
+    const [asistentes, total] = await Promise.all([
+      prisma.asistente.findMany({
+        where: { clienteId: personaId },
+        skip,
+        take: limit,
+        include: { subasta: { include: subastaInclude } },
+        orderBy: { app: { joinedAt: 'desc' } },
+      }),
+      prisma.asistente.count({ where: { clienteId: personaId } }),
+    ]);
+    return { auctions: asistentes.map((a) => mapSubasta(a.subasta)), total, page };
+  },
+
+  async getMyAuctions(personaId: number) {
     const [favorites, participations] = await Promise.all([
       prisma.auctionFavorite.findMany({
-        where: { userId },
-        include: { auction: { include: cover } },
+        where: { clienteId: personaId },
+        include: { subasta: { include: subastaInclude } },
         orderBy: { createdAt: 'desc' },
       }),
-      prisma.auctionParticipant.findMany({
-        where: { userId },
-        include: { auction: { include: cover } },
-        orderBy: { joinedAt: 'desc' },
+      prisma.asistente.findMany({
+        where: { clienteId: personaId },
+        include: { subasta: { include: subastaInclude } },
+        orderBy: { app: { joinedAt: 'desc' } },
       }),
     ]);
 
-    const partIds = new Set(participations.map((p) => p.auctionId));
-    const byId = new Map<string, any>();
-    // Participaciones primero: estrella bloqueada.
+    const byId = new Map<number, any>();
     for (const p of participations) {
-      byId.set(p.auctionId, { ...p.auction, followed: true, participating: true });
+      byId.set(p.subastaId, { ...mapSubasta(p.subasta), followed: true, participating: true });
     }
     for (const f of favorites) {
-      if (!byId.has(f.auctionId)) {
-        byId.set(f.auctionId, { ...f.auction, followed: true, participating: partIds.has(f.auctionId) });
+      if (!byId.has(f.subastaId)) {
+        byId.set(f.subastaId, { ...mapSubasta(f.subasta), followed: true, participating: false });
       }
     }
     return { auctions: Array.from(byId.values()) };
   },
 
-  async getPurchases(userId: string, req: Request) {
+  async getPurchases(personaId: number, req: Request) {
     const { skip, limit, page } = getPagination(req);
     const [purchases, total] = await Promise.all([
-      prisma.purchase.findMany({
-        where: { buyerId: userId },
+      prisma.registroDeSubasta.findMany({
+        where: { clienteId: personaId },
         skip,
         take: limit,
-        include: { item: { include: { images: { take: 1 } } } },
-        orderBy: { createdAt: 'desc' },
+        include: { app: true, producto: { include: { app: true, seguro: true, fotos: { take: 1, include: { app: true } } } } },
+        orderBy: { app: { createdAt: 'desc' } },
       }),
-      prisma.purchase.count({ where: { buyerId: userId } }),
+      prisma.registroDeSubasta.count({ where: { clienteId: personaId } }),
     ]);
-    return { purchases, total, page };
+    const mapped = purchases.map((p) => {
+      const prod = flattenProducto(p.producto) as any;
+      if (prod?.seguro) prod.seguro = { ...prod.seguro, polizaCombinada: fromSiNo(prod.seguro.polizaCombinada) };
+      return { ...p, ...p.app, producto: prod };
+    });
+    return { purchases: mapped, total, page };
+  },
+
+  /** Productos de los que el usuario es DUEÑO (piezas entregadas para subasta),
+   *  con su ubicación de depósito y póliza de seguro. */
+  async getProducts(personaId: number) {
+    const productos = await prisma.producto.findMany({
+      where: { duenioId: personaId },
+      include: { app: true, seguro: true, fotos: { take: 1, include: { app: true } } },
+      orderBy: { identificador: 'desc' },
+    });
+    const products = productos.map((p) => {
+      const prod = flattenProducto(p) as any;
+      prod.seguro = p.seguro ? { ...p.seguro, polizaCombinada: fromSiNo(p.seguro.polizaCombinada) } : null;
+      return prod;
+    });
+    return { products };
   },
 };

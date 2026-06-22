@@ -16,6 +16,7 @@ router.put('/:id/messages/:msgId/read', userController.markMessageRead);
 router.get('/:id/auction-history', userController.getAuctionHistory);
 router.get('/:id/my-auctions', userController.getMyAuctions);
 router.get('/:id/purchases', userController.getPurchases);
+router.get('/:id/products', userController.getProducts);
 router.get('/:id/submissions', submissionController.listMine);
 
 // Payment methods nested under user

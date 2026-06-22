@@ -47,6 +47,7 @@ export default function SubastaEnVivo() {
   const [userId, setUserId] = useState<string | null>(null);
   const [pmId, setPmId] = useState<string | null>(null);
   const [canBid, setCanBid] = useState(false);
+  const [bidNotice, setBidNotice] = useState('');
   const [monto, setMonto] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -109,9 +110,22 @@ export default function SubastaEnVivo() {
         setBids(history);
 
         const verified = pms.filter((p) => p.verificado && p.activo);
-        // Preferir un medio de pago en la moneda de la subasta.
-        const usable = verified.find((p) => p.moneda === a.moneda) ?? verified[0];
+        // Para subastas en USD el medio de pago debe ser internacional.
+        const usdCapable = (t: string) => ['cuenta_bancaria_extranjera', 'tarjeta_credito_internacional', 'cheque_certificado'].includes(t);
+        const compatibles = a.moneda === 'USD' ? verified.filter((p) => usdCapable(p.tipo)) : verified;
+        const usable = compatibles[0];
         setPmId(usable?.id ?? null);
+
+        // Motivo por el cual (no) puede pujar, para avisarle al usuario.
+        if (pms.length === 0) {
+          setBidNotice('Agregá un medio de pago verificado para poder pujar.');
+        } else if (verified.length === 0) {
+          setBidNotice('Tu medio de pago está pendiente de verificación. Vas a poder pujar cuando la empresa lo apruebe.');
+        } else if (!usable) {
+          setBidNotice('Esta subasta es en USD: necesitás un medio de pago internacional verificado.');
+        } else {
+          setBidNotice('');
+        }
 
         // Unirse (valida categoría/estado/medio de pago). No bloquea la vista.
         try {
@@ -360,6 +374,12 @@ export default function SubastaEnVivo() {
 
           {bidError ? <Text style={styles.bidError}>{bidError}</Text> : null}
 
+          {!canBid && bidNotice ? (
+            <View style={styles.pmNotice}>
+              <Text style={styles.pmNoticeText}>ℹ️ {bidNotice}</Text>
+            </View>
+          ) : null}
+
           <Pressable
             onPress={submitBid}
             disabled={!canBid || placing}
@@ -487,6 +507,15 @@ const styles = StyleSheet.create({
   },
   quickText: { fontSize: FontSize.sm, fontWeight: FontWeight.medium, color: Brand.textMuted },
   bidError: { color: Brand.danger, fontSize: FontSize.sm, marginBottom: space.sm },
+  pmNotice: {
+    backgroundColor: `${Brand.warning}1A`,
+    borderWidth: 1,
+    borderColor: Brand.warning,
+    borderRadius: Radius.sm,
+    padding: space.md,
+    marginBottom: space.sm,
+  },
+  pmNoticeText: { color: Brand.warning, fontSize: FontSize.sm, lineHeight: 18 },
   bidBtn: {
     backgroundColor: Brand.primary,
     borderRadius: Radius.sm,

@@ -5,7 +5,7 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { unfavoriteAuction, type Auction } from '@/api/auctions';
-import { getStoredUser } from '@/api/auth';
+import { getStoredUser, isGuestSession } from '@/api/auth';
 import { getMyAuctions } from '@/api/users';
 import { AuctionCard } from '@/components/ui/auction-card';
 import { Brand, FontSize, FontWeight, Radius, space } from '@/constants/theme';
@@ -17,9 +17,14 @@ export default function MisSubastas() {
   const [auctions, setAuctions] = useState<Auction[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [isGuest, setIsGuest] = useState(false);
 
   useEffect(() => {
-    load();
+    isGuestSession().then((g) => {
+      setIsGuest(g);
+      if (!g) load();
+      else setLoading(false);
+    });
   }, []);
 
   const load = async () => {
@@ -49,6 +54,30 @@ export default function MisSubastas() {
       load(); // revertir si falla
     }
   };
+
+  if (isGuest) {
+    return (
+      <View style={styles.root}>
+        <StatusBar style="light" />
+        <View style={[styles.header, { paddingTop: insets.top + space.sm }]}>
+          <Text style={styles.headerTitle}>Mis subastas</Text>
+          <Text style={styles.headerSub}>Necesitás una cuenta para ver esto</Text>
+        </View>
+        <View style={styles.guestWall}>
+          <Text style={styles.guestWallTitle}>Función exclusiva</Text>
+          <Text style={styles.guestWallMsg}>
+            Registrate para poder participar en subastas, guardar favoritos y ver tu historial.
+          </Text>
+          <Pressable onPress={() => router.replace('/register')} style={({ pressed }) => [styles.guestBtn, pressed && { opacity: 0.85 }]}>
+            <Text style={styles.guestBtnText}>Registrarse</Text>
+          </Pressable>
+          <Pressable onPress={() => router.replace('/login')} style={({ pressed }) => [styles.guestBtnSecondary, pressed && { opacity: 0.7 }]}>
+            <Text style={styles.guestBtnSecondaryText}>Iniciar sesión</Text>
+          </Pressable>
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.root}>
@@ -103,4 +132,11 @@ const styles = StyleSheet.create({
   errorBox: { marginTop: space.lg, alignItems: 'center', gap: space.sm },
   errorText: { color: Brand.danger, fontSize: FontSize.sm, textAlign: 'center' },
   retry: { color: Brand.primary, fontWeight: FontWeight.medium, fontSize: FontSize.sm },
+  guestWall: { flex: 1, padding: space.lg, justifyContent: 'center', alignItems: 'center', gap: space.md },
+  guestWallTitle: { fontSize: FontSize.lg, fontWeight: FontWeight.bold, color: Brand.text },
+  guestWallMsg: { fontSize: FontSize.sm, color: Brand.textMuted, textAlign: 'center', lineHeight: 20 },
+  guestBtn: { backgroundColor: Brand.primary, borderRadius: Radius.sm, paddingVertical: 14, paddingHorizontal: space.xl, alignItems: 'center', width: '100%' },
+  guestBtnText: { color: '#fff', fontSize: FontSize.base, fontWeight: FontWeight.bold },
+  guestBtnSecondary: { backgroundColor: Brand.surface, borderWidth: 1, borderColor: Brand.border, borderRadius: Radius.sm, paddingVertical: 12, paddingHorizontal: space.xl, alignItems: 'center', width: '100%' },
+  guestBtnSecondaryText: { color: Brand.text, fontSize: FontSize.base, fontWeight: FontWeight.medium },
 });

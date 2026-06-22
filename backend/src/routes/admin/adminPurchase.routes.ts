@@ -9,26 +9,41 @@ router.get('/purchases', adminPurchaseController.list);
 router.patch('/purchases/:id/fine', adminPurchaseController.applyFine);
 router.patch('/purchases/:id/paid', adminPurchaseController.markPaid);
 
-// Auctioneers admin
+// Subastadores (equivalente a auctioneers en el nuevo schema)
 router.get('/auctioneers', async (_req, res) => {
   try {
-    const auctioneers = await prisma.rematador.findMany();
-    return ok(res, { auctioneers });
+    const subastadores = await prisma.subastador.findMany({
+      where: { app: { activo: true } },
+      include: { app: true, persona: { select: { identificador: true, nombre: true, app: { select: { apellido: true } } } } },
+    });
+    const mapped = subastadores.map((s) => ({
+      id: s.identificador.toString(),
+      nombre: s.persona.nombre,
+      apellido: s.persona.app?.apellido ?? '',
+      matricula: s.matricula,
+      region: s.region,
+      activo: s.app?.activo ?? false,
+    }));
+    return ok(res, { auctioneers: mapped });
   } catch (err: any) { return serverError(res, err.message); }
 });
 
 router.post('/auctioneers', async (req, res) => {
   try {
-    const { nombre, apellido, matricula, email } = req.body;
-    const a = await prisma.rematador.create({ data: { nombre, apellido, matricula, email } });
-    return res.status(201).json({ success: true, data: a });
+    const { nombre, apellido, matricula, email, region } = req.body;
+    const persona = await prisma.persona.create({ data: { nombre, documento: '', app: { create: { apellido, email } } } });
+    const sub = await prisma.subastador.create({ data: { identificador: persona.identificador, matricula, region, app: { create: { email } } } });
+    return res.status(201).json({ success: true, data: { id: sub.identificador.toString(), nombre, apellido, matricula, region } });
   } catch (err: any) { return serverError(res, err.message); }
 });
 
 router.put('/auctioneers/:id', async (req, res) => {
   try {
-    const a = await prisma.rematador.update({ where: { id: req.params.id }, data: req.body });
-    return ok(res, a);
+    const { matricula, region, activo, nombre, apellido } = req.body;
+    const id = parseInt(req.params.id);
+    if (nombre || apellido) await prisma.persona.update({ where: { identificador: id }, data: { nombre, app: { update: { apellido } } } });
+    const sub = await prisma.subastador.update({ where: { identificador: id }, data: { matricula, region, app: { update: { activo } } } });
+    return ok(res, sub);
   } catch (err: any) { return serverError(res, err.message); }
 });
 

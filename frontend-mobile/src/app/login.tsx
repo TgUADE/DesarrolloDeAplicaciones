@@ -15,7 +15,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { login } from '@/api/auth';
+import { login, loginAsGuest } from '@/api/auth';
 import { BrandLogo } from '@/components/brand-logo';
 import { Brand, FontSize, FontWeight, Radius, space } from '@/constants/theme';
 import { getApiErrorMessage } from '@/utils/errors';
@@ -52,6 +52,11 @@ export default function Login() {
   };
 
   const soon = () => Alert.alert('Próximamente', 'Esta función todavía no está disponible.');
+
+  const handleGuest = async () => {
+    await loginAsGuest();
+    router.replace('/home');
+  };
 
   return (
     <View style={styles.root}>
@@ -127,7 +132,7 @@ export default function Login() {
               <Text style={styles.secondaryBtnText}>Registrate</Text>
             </Pressable>
 
-            <Pressable onPress={soon} style={styles.guestWrap} hitSlop={8}>
+            <Pressable onPress={handleGuest} style={styles.guestWrap} hitSlop={8}>
               <Text style={styles.guest}>Ingresar como invitado</Text>
             </Pressable>
           </View>
