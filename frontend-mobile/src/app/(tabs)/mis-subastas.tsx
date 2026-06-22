@@ -1,6 +1,6 @@
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -19,15 +19,7 @@ export default function MisSubastas() {
   const [error, setError] = useState('');
   const [isGuest, setIsGuest] = useState(false);
 
-  useEffect(() => {
-    isGuestSession().then((g) => {
-      setIsGuest(g);
-      if (!g) load();
-      else setLoading(false);
-    });
-  }, []);
-
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
@@ -42,7 +34,19 @@ export default function MisSubastas() {
     } finally {
       setLoading(false);
     }
-  };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Recargar cada vez que la pantalla recibe foco (p. ej. al volver de Home tras marcar favoritos).
+  useFocusEffect(
+    useCallback(() => {
+      isGuestSession().then((g) => {
+        setIsGuest(g);
+        if (!g) load();
+        else setLoading(false);
+      });
+    }, [load]),
+  );
 
   // La estrella en participadas está bloqueada; en favoritas (no participadas) la saca de la lista.
   const handleUnfollow = async (a: Auction) => {

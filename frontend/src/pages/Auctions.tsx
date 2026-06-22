@@ -67,7 +67,7 @@ export default function Auctions() {
     descripcion: '',
     fechaHora: '',
     ubicacion: '',
-    categoria: 'arte',
+    categoria: 'comun', // tier de acceso (no tipo de objeto)
     moneda: 'ARS',
     rematadorId: '',
   });
