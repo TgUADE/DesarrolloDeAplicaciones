@@ -29,6 +29,9 @@ export interface Purchase {
   costoEnvio: string | null;
   multa?: string | null;
   retiraPersonalmente: boolean;
+  envioEstado?: string; // pendiente | enviado | recibido
+  enviadoAt?: string | null;
+  recibidoAt?: string | null;
   createdAt?: string;
   facturaNro?: string;
   trackingCode?: string;

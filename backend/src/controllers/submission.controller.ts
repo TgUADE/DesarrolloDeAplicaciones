@@ -48,23 +48,38 @@ export const submissionController = {
     } catch (err: any) { return serverError(res, err.message); }
   },
 
-  async userAccept(req: Request, res: Response) {
+  async acceptOffer(req: Request, res: Response) {
     try {
-      const sub = await submissionService.userAccept(req.params.id, parseInt(req.user!.userId));
+      const sub = await submissionService.userAcceptOffer(req.params.id, parseInt(req.user!.userId));
       return ok(res, sub);
-    } catch (err: any) {
-      const status = err.status || 500;
-      return res.status(status).json({ success: false, error: err.message });
-    }
+    } catch (err: any) { return res.status(err.status || 500).json({ success: false, error: err.message }); }
   },
 
-  async userReject(req: Request, res: Response) {
+  async rejectOffer(req: Request, res: Response) {
     try {
-      const sub = await submissionService.userReject(req.params.id, parseInt(req.user!.userId));
+      const sub = await submissionService.userRejectOffer(req.params.id, parseInt(req.user!.userId));
       return ok(res, sub);
-    } catch (err: any) {
-      const status = err.status || 500;
-      return res.status(status).json({ success: false, error: err.message });
-    }
+    } catch (err: any) { return res.status(err.status || 500).json({ success: false, error: err.message }); }
+  },
+
+  async markShipped(req: Request, res: Response) {
+    try {
+      const sub = await submissionService.userMarkShipped(req.params.id, parseInt(req.user!.userId));
+      return ok(res, sub);
+    } catch (err: any) { return res.status(err.status || 500).json({ success: false, error: err.message }); }
+  },
+
+  async acceptAppraisal(req: Request, res: Response) {
+    try {
+      const sub = await submissionService.userAcceptAppraisal(req.params.id, parseInt(req.user!.userId));
+      return ok(res, sub);
+    } catch (err: any) { return res.status(err.status || 500).json({ success: false, error: err.message }); }
+  },
+
+  async rejectAppraisal(req: Request, res: Response) {
+    try {
+      const sub = await submissionService.userRejectAppraisal(req.params.id, parseInt(req.user!.userId));
+      return ok(res, sub);
+    } catch (err: any) { return res.status(err.status || 500).json({ success: false, error: err.message }); }
   },
 };

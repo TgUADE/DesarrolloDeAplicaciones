@@ -218,4 +218,37 @@ export const purchaseService = {
     if (registro.clienteId) await categoryService.evaluateUpgrade(registro.clienteId);
     return { ...updated, ...updated.app };
   },
+
+  /** [Admin] Marca la compra como enviada al comprador (solo si está pagada y no es retiro). */
+  async markShipped(id: number) {
+    const registro = await prisma.registroDeSubasta.findUnique({ where: { identificador: id }, include: { app: true } });
+    if (!registro) throw { status: 404, message: 'Compra no encontrada' };
+    if (registro.app?.status === 'pendiente_pago' || registro.app?.status === 'multa_aplicada') throw { status: 400, message: 'La compra todavía no fue pagada' };
+    if (registro.app?.retiraPersonalmente) throw { status: 400, message: 'La compra es de retiro personal, no tiene envío' };
+    const updated = await prisma.registroDeSubasta.update({
+      where: { identificador: id },
+      data: { app: { update: { envioEstado: 'enviado', enviadoAt: new Date() } } },
+      include: { app: true },
+    });
+    if (registro.clienteId) {
+      await messageService.create(registro.clienteId, 'Tu compra fue enviada', 'Despachamos el bien adquirido a la dirección declarada. Podés seguir el envío desde "Mis compras".', 'compra');
+    }
+    return { ...updated, ...updated.app };
+  },
+
+  /** [Admin] Marca la compra como recibida por el comprador. */
+  async markDelivered(id: number) {
+    const registro = await prisma.registroDeSubasta.findUnique({ where: { identificador: id }, include: { app: true } });
+    if (!registro) throw { status: 404, message: 'Compra no encontrada' };
+    if (registro.app?.envioEstado !== 'enviado') throw { status: 400, message: 'La compra todavía no fue enviada' };
+    const updated = await prisma.registroDeSubasta.update({
+      where: { identificador: id },
+      data: { app: { update: { envioEstado: 'recibido', recibidoAt: new Date() } } },
+      include: { app: true },
+    });
+    if (registro.clienteId) {
+      await messageService.create(registro.clienteId, 'Tu compra fue entregada', 'El bien adquirido figura como recibido. ¡Gracias por tu compra!', 'compra');
+    }
+    return { ...updated, ...updated.app };
+  },
 };

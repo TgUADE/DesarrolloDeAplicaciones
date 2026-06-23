@@ -8,7 +8,10 @@ router.use(verifyToken);
 
 router.post('/', submissionController.create);
 router.get('/:id', submissionController.getById);
-router.patch('/:id/user-accept', submissionController.userAccept);
-router.patch('/:id/user-reject', submissionController.userReject);
+router.patch('/:id/accept-offer', submissionController.acceptOffer);
+router.patch('/:id/reject-offer', submissionController.rejectOffer);
+router.patch('/:id/shipped', submissionController.markShipped);
+router.patch('/:id/accept-appraisal', submissionController.acceptAppraisal);
+router.patch('/:id/reject-appraisal', submissionController.rejectAppraisal);
 
 export default router;

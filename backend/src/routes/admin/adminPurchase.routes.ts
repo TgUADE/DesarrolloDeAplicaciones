@@ -8,6 +8,8 @@ const router = Router();
 router.get('/purchases', adminPurchaseController.list);
 router.patch('/purchases/:id/fine', adminPurchaseController.applyFine);
 router.patch('/purchases/:id/paid', adminPurchaseController.markPaid);
+router.patch('/purchases/:id/shipped', adminPurchaseController.markShipped);
+router.patch('/purchases/:id/delivered', adminPurchaseController.markDelivered);
 
 // Subastadores (equivalente a auctioneers en el nuevo schema)
 router.get('/auctioneers', async (_req, res) => {

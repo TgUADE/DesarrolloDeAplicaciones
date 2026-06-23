@@ -1,7 +1,8 @@
 import { Request, Response } from 'express';
 import { userService } from '../services/user.service';
+import { profileChangeRequestService } from '../services/profileChangeRequest.service';
 import { messageService } from '../services/message.service';
-import { ok, notFound, forbidden, serverError } from '../utils/apiResponse';
+import { ok, created, notFound, forbidden, serverError } from '../utils/apiResponse';
 
 function isSelfOrAdmin(req: Request, targetId: string): boolean {
   return req.user?.userId === targetId || req.user?.isAdmin === true;
@@ -22,6 +23,26 @@ export const userController = {
       if (!isSelfOrAdmin(req, req.params.id)) return forbidden(res);
       const user = await userService.update(parseInt(req.params.id), req.body);
       return ok(res, user);
+    } catch (err: any) { return serverError(res, err.message); }
+  },
+
+  // El usuario SOLICITA un cambio de datos (queda pendiente de aprobación del admin).
+  async createProfileChangeRequest(req: Request, res: Response) {
+    try {
+      if (!isSelfOrAdmin(req, req.params.id)) return forbidden(res);
+      const { nombre, apellido, domicilioLegal, cuentaCobro } = req.body;
+      const reqCambio = await profileChangeRequestService.create(parseInt(req.params.id), { nombre, apellido, domicilioLegal, cuentaCobro });
+      return created(res, reqCambio);
+    } catch (err: any) {
+      return res.status(err.status || 500).json({ success: false, error: err.message });
+    }
+  },
+
+  async listProfileChangeRequests(req: Request, res: Response) {
+    try {
+      if (!isSelfOrAdmin(req, req.params.id)) return forbidden(res);
+      const requests = await profileChangeRequestService.listForUser(parseInt(req.params.id));
+      return ok(res, { requests });
     } catch (err: any) { return serverError(res, err.message); }
   },
 

@@ -266,7 +266,21 @@ async function main() {
   }
   const demoId = await seedCliente('usuario@demo.com', 'Juan', 'Pérez', '30222222227', 'Av. Santa Fe 5678, CABA', 32, 'oro', userHash);
   await seedCliente('sofia@demo.com', 'Sofía', 'Romero', '27333333334', 'Bvar. España 200, Montevideo', 858, 'platino');
-  await seedCliente('martin@demo.com', 'Martín', 'Silva', '23444444449', 'Rua Augusta 50, São Paulo', 76, 'especial');
+  const martinId = await seedCliente('martin@demo.com', 'Martín', 'Silva', '23444444449', 'Rua Augusta 50, São Paulo', 76, 'especial');
+
+  // Solicitud de cambio de datos de ejemplo (pendiente) para el panel admin.
+  if ((await prisma.profileChangeRequest.count()) === 0) {
+    await prisma.profileChangeRequest.create({
+      data: {
+        personaId: martinId,
+        nombre: 'Martín',
+        apellido: 'Silva Gómez',
+        domicilioLegal: 'Rua Augusta 1200, São Paulo',
+        cuentaCobro: 'Itaú · USD ····7788',
+        estado: 'pendiente',
+      },
+    });
+  }
 
   // Medios de pago del usuario demo (necesarios para pujar)
   const pmCount = await prisma.paymentMethod.count({ where: { personaId: demoId } });
@@ -275,6 +289,7 @@ async function main() {
       data: [
         { personaId: demoId, tipo: 'cuenta_bancaria_nacional', moneda: 'ARS', banco: 'Banco Nación', numeroCuenta: '0110599520000001234567', verificado: true, estado: 'aprobada', activo: true },
         { personaId: demoId, tipo: 'cuenta_bancaria_extranjera', moneda: 'USD', banco: 'Citibank', numeroCuenta: 'US12345678901234', swift: 'CITIUS33', verificado: true, estado: 'aprobada', activo: true },
+        { personaId: demoId, tipo: 'cuenta_bancaria_nacional', moneda: 'ARS', banco: 'Banco Macro', numeroCuenta: '2850590940090418135201', verificado: false, estado: 'pendiente', activo: true },
         { personaId: demoId, tipo: 'tarjeta_credito_nacional', moneda: 'ARS', banco: 'Banco Galicia', numeroTarjeta: '4242', titularTarjeta: 'Juan Pérez', vencimiento: '12/28', verificado: false, estado: 'pendiente', activo: true },
         { personaId: demoId, tipo: 'tarjeta_credito_internacional', moneda: 'AMBAS', banco: 'American Express', numeroTarjeta: '1005', titularTarjeta: 'Juan Pérez', vencimiento: '06/29', verificado: true, estado: 'aprobada', activo: true },
         { personaId: demoId, tipo: 'cheque_certificado', moneda: 'ARS', banco: 'Banco Provincia', montoGarantia: 200000, verificado: false, estado: 'rechazada', activo: true },

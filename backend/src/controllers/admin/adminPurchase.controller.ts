@@ -29,4 +29,22 @@ export const adminPurchaseController = {
       return res.status(err.status || 500).json({ success: false, error: err.message });
     }
   },
+
+  async markShipped(req: Request, res: Response) {
+    try {
+      const purchase = await purchaseService.markShipped(parseInt(req.params.id));
+      return ok(res, purchase);
+    } catch (err: any) {
+      return res.status(err.status || 500).json({ success: false, error: err.message });
+    }
+  },
+
+  async markDelivered(req: Request, res: Response) {
+    try {
+      const purchase = await purchaseService.markDelivered(parseInt(req.params.id));
+      return ok(res, purchase);
+    } catch (err: any) {
+      return res.status(err.status || 500).json({ success: false, error: err.message });
+    }
+  },
 };

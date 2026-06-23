@@ -8,20 +8,27 @@ export interface MySubmission {
   fechaEpoca: string | null;
   datosHistoricos: string | null;
   status: string;
-  precioSugerido: number | string | null;
+  valorOfrecido: number | string | null;
   precioBaseOfrecido: number | string | null;
+  comisionPorcentaje: number | string | null;
   moneda: string | null;
   cuentaCobro: string | null;
   comisionesInfo: string | null;
   motivoRechazo: string | null;
+  direccionEnvio: string | null;
+  enviadoAt: string | null;
+  recibidoAt: string | null;
+  // Estado real de la pieza una vez aceptada: status del producto + estado de la subasta donde está.
+  productoStatus: string | null; // disponible | en_subasta | vendido
+  subastaEstado: string | null; // programada | abierta | cerrada | finalizada
   createdAt: string;
   images?: { url: string }[];
 }
 
 /**
  * Crea una solicitud para incluir un artículo en una futura subasta.
- * Las imágenes van como base64 (al menos 6), igual que en el registro.
- * `moneda` define en qué moneda está `precioSugerido` (según la cuenta de cobro elegida).
+ * El vendedor NO fija precio: la empresa ofrece un valor y luego tasa.
+ * `moneda` define la moneda del cobro (según la cuenta destino validada elegida).
  */
 export async function createSubmission(payload: {
   nombre?: string;
@@ -31,7 +38,6 @@ export async function createSubmission(payload: {
   datosHistoricos?: string;
   declaracionPropiedad: boolean;
   origenLicito: boolean;
-  precioSugerido?: number;
   moneda?: 'ARS' | 'USD';
   cuentaCobro?: string;
   images: string[];
@@ -44,12 +50,27 @@ export async function listMySubmissions(userId: string): Promise<MySubmission[]>
   return res.data.data.submissions as MySubmission[];
 }
 
-/** El usuario acepta el precio base / comisiones propuestos por la empresa. */
-export async function acceptSubmissionPrice(id: string): Promise<void> {
-  await client.patch(`/submissions/${id}/user-accept`);
+/** El vendedor acepta el valor inicial ofrecido por la empresa → debe enviar el ítem. */
+export async function acceptOffer(id: string): Promise<void> {
+  await client.patch(`/submissions/${id}/accept-offer`);
 }
 
-/** El usuario rechaza el precio propuesto (la empresa devuelve el bien con cargo). */
-export async function rejectSubmissionPrice(id: string): Promise<void> {
-  await client.patch(`/submissions/${id}/user-reject`);
+/** El vendedor rechaza el valor inicial (fin). */
+export async function rejectOffer(id: string): Promise<void> {
+  await client.patch(`/submissions/${id}/reject-offer`);
+}
+
+/** El vendedor confirma que envió el ítem a la empresa. */
+export async function markShipped(id: string): Promise<void> {
+  await client.patch(`/submissions/${id}/shipped`);
+}
+
+/** El vendedor acepta la tasación final + comisión → la pieza va a subasta. */
+export async function acceptAppraisal(id: string): Promise<void> {
+  await client.patch(`/submissions/${id}/accept-appraisal`);
+}
+
+/** El vendedor rechaza la tasación final (devolución con envío a su cargo). */
+export async function rejectAppraisal(id: string): Promise<void> {
+  await client.patch(`/submissions/${id}/reject-appraisal`);
 }

@@ -35,12 +35,16 @@ export interface Submission {
   fechaEpoca: string | null;
   datosHistoricos: string | null;
   status: string;
-  precioSugerido: number | string | null;
+  valorOfrecido: number | string | null;
   precioBaseOfrecido: number | string | null;
+  comisionPorcentaje: number | string | null;
   moneda: string | null;
   cuentaCobro: string | null;
   comisionesInfo: string | null;
   motivoRechazo: string | null;
+  direccionEnvio: string | null;
+  enviadoAt: string | null;
+  recibidoAt: string | null;
   createdAt: string;
   persona?: { nombre: string; apellido: string; email?: string | null };
   images?: { url: string }[];
@@ -86,6 +90,7 @@ export interface Purchase {
   moneda: string;
   costoEnvio: string | null;
   retiraPersonalmente: boolean;
+  envioEstado?: string; // pendiente | enviado | recibido
   createdAt: string;
   medioPago?: { tipo: string; banco: string | null; moneda: string } | null;
   cliente?: { persona?: { nombre: string; apellido: string; email?: string | null } };
@@ -178,10 +183,24 @@ export async function getSubmissions(status?: string): Promise<{ submissions: Su
   return req(`/admin/submissions?${p}`);
 }
 
-export async function acceptSubmission(id: string, precioBaseOfrecido: number, comisionesInfo?: string): Promise<{ submission: Submission }> {
-  return req(`/admin/submissions/${id}/accept`, {
+// La empresa ofrece un valor inicial (+ dirección de envío) → el vendedor acepta/rechaza.
+export async function offerSubmission(id: string, valorOfrecido: number, direccionEnvio?: string): Promise<{ submission: Submission }> {
+  return req(`/admin/submissions/${id}/offer`, {
     method: 'PATCH',
-    body: JSON.stringify({ precioBaseOfrecido, comisionesInfo }),
+    body: JSON.stringify({ valorOfrecido, direccionEnvio }),
+  });
+}
+
+// La empresa marca el ítem como recibido en el depósito.
+export async function markSubmissionReceived(id: string): Promise<{ submission: Submission }> {
+  return req(`/admin/submissions/${id}/received`, { method: 'PATCH' });
+}
+
+// Tasación final + % de comisión.
+export async function appraiseSubmission(id: string, precioBaseOfrecido: number, comisionPorcentaje: number, comisionesInfo?: string): Promise<{ submission: Submission }> {
+  return req(`/admin/submissions/${id}/appraisal`, {
+    method: 'PATCH',
+    body: JSON.stringify({ precioBaseOfrecido, comisionPorcentaje, comisionesInfo }),
   });
 }
 
@@ -297,6 +316,36 @@ export async function verifyPaymentMethod(personaId: number, pmId: string, estad
   });
 }
 
+// --- Solicitudes de cambio de datos de perfil ---
+export interface ProfileChangeRequest {
+  id: string;
+  nombre: string | null;
+  apellido: string | null;
+  domicilioLegal: string | null;
+  cuentaCobro: string | null;
+  estado: string; // pendiente | aprobada | rechazada
+  motivoRechazo: string | null;
+  createdAt: string;
+  persona?: { id: string; nombre: string; apellido: string; email: string | null } | null;
+  actual?: { nombre: string; apellido: string; domicilioLegal: string | null; cuentaCobro: string | null } | null;
+}
+
+export async function getProfileChangeRequests(estado?: string): Promise<{ requests: ProfileChangeRequest[] }> {
+  const qs = estado ? `?estado=${estado}` : '';
+  return req(`/admin/profile-change-requests${qs}`);
+}
+
+export async function approveProfileChangeRequest(id: string): Promise<unknown> {
+  return req(`/admin/profile-change-requests/${id}/approve`, { method: 'PATCH' });
+}
+
+export async function rejectProfileChangeRequest(id: string, motivoRechazo: string): Promise<unknown> {
+  return req(`/admin/profile-change-requests/${id}/reject`, {
+    method: 'PATCH',
+    body: JSON.stringify({ motivoRechazo }),
+  });
+}
+
 // Ubicación / depósito y seguro de un producto (por productoId)
 export async function setItemLocation(productoId: number, deposito: string, ubicacion: string): Promise<unknown> {
   return req(`/admin/items/${productoId}/location`, { method: 'PATCH', body: JSON.stringify({ deposito, ubicacion }) });
@@ -344,4 +393,13 @@ export async function markPurchasePaid(id: number): Promise<Purchase> {
 
 export async function applyFine(id: number): Promise<Purchase> {
   return req(`/admin/purchases/${id}/fine`, { method: 'PATCH' });
+}
+
+// Workflow de envío de la compra (luego del pago).
+export async function markPurchaseShipped(id: number): Promise<Purchase> {
+  return req(`/admin/purchases/${id}/shipped`, { method: 'PATCH' });
+}
+
+export async function markPurchaseDelivered(id: number): Promise<Purchase> {
+  return req(`/admin/purchases/${id}/delivered`, { method: 'PATCH' });
 }

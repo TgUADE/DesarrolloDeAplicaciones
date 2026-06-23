@@ -65,6 +65,13 @@ export async function getStoredUser(): Promise<AuthUser | null> {
   return raw ? (JSON.parse(raw) as AuthUser) : null;
 }
 
+/** Mergea cambios en el usuario guardado (ej. tras actualizar el perfil). */
+export async function updateStoredUser(patch: Partial<AuthUser>): Promise<void> {
+  const current = await getStoredUser();
+  if (!current) return;
+  await AsyncStorage.setItem('user', JSON.stringify({ ...current, ...patch }));
+}
+
 /** Ingresa sin cuenta (modo invitado). */
 export async function loginAsGuest(): Promise<void> {
   await AsyncStorage.multiRemove(['accessToken', 'user']);

@@ -46,6 +46,7 @@ model Persona {
   paymentMethods PaymentMethod[]
   mensajes       Mensaje[]
   submissions    ItemSubmission[]
+  profileChangeRequests ProfileChangeRequest[]
 
   @@map("personas")
 }
@@ -290,6 +291,25 @@ model PersonaApp {
   @@map("personas_app")
 }
 
+// Solicitud del usuario para actualizar sus datos de perfil. Como los datos de
+// identidad fueron verificados por la empresa en el registro, el cambio NO se
+// aplica directo: queda pendiente hasta que el admin lo aprueba o rechaza.
+model ProfileChangeRequest {
+  id             String   @id @default(cuid())
+  personaId      Int
+  persona        Persona  @relation(fields: [personaId], references: [identificador], onDelete: Cascade)
+  nombre         String?
+  apellido       String?
+  domicilioLegal String?
+  cuentaCobro    String?
+  estado         String   @default("pendiente") @db.VarChar(20) // pendiente | aprobada | rechazada
+  motivoRechazo  String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@map("profile_change_requests")
+}
+
 model SubastadorApp {
   subastadorId Int        @id @map("subastador_id")
   subastador   Subastador @relation(fields: [subastadorId], references: [identificador], onDelete: Cascade)
@@ -380,6 +400,9 @@ model RegistroDeSubastaApp {
   pagoVencimientoAt   DateTime?
   retiraPersonalmente Boolean           @default(false)
   costoEnvio          Decimal?          @db.Decimal(18, 2)
+  envioEstado         String            @default("pendiente") @db.VarChar(20) // pendiente | enviado | recibido
+  enviadoAt           DateTime?
+  recibidoAt          DateTime?
   createdAt           DateTime          @default(now())
   updatedAt           DateTime          @updatedAt
 
@@ -459,12 +482,17 @@ model ItemSubmission {
   origenLicito         Boolean   @default(false)
   status               String    @default("pendiente_empresa") @db.VarChar(30)
   precioSugerido       Decimal?  @db.Decimal(12, 2)
+  valorOfrecido        Decimal?  @db.Decimal(12, 2)
   precioBaseOfrecido   Decimal?  @db.Decimal(12, 2)
+  comisionPorcentaje   Decimal?  @db.Decimal(5, 2)
   moneda               String?   @db.VarChar(3)
   comisionesInfo       String?
   motivoRechazo        String?
   gastoDevolucion      Decimal?  @db.Decimal(12, 2)
   cuentaCobro          String?
+  direccionEnvio       String?
+  enviadoAt            DateTime?
+  recibidoAt           DateTime?
   createdAt            DateTime  @default(now())
   updatedAt            DateTime  @updatedAt
 

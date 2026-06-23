@@ -217,12 +217,14 @@ export const auctionService = {
       const [persona, asistente, itemCatalogo] = await Promise.all([
         tx.persona.findUnique({ where: { identificador: personaId }, include: { app: true, paymentMethods: { where: { id: paymentMethodId, verificado: true, activo: true } } } }),
         tx.asistente.findFirst({ where: { subastaId, clienteId: personaId, app: { isActive: true } } }),
-        tx.itemCatalogo.findUnique({ where: { identificador: currentItemId } }),
+        tx.itemCatalogo.findUnique({ where: { identificador: currentItemId }, include: { producto: { select: { duenioId: true } } } }),
       ]);
 
       if (!persona || persona.app?.registrationStatus !== 'aprobado') throw { status: 403, message: 'Usuario no autorizado' };
       if (!asistente) throw { status: 403, message: 'No estás conectado a esta subasta' };
       if (!itemCatalogo) throw { status: 404, message: 'Ítem no encontrado' };
+      // El dueño de la pieza no puede pujar por su propio ítem.
+      if (itemCatalogo.producto?.duenioId === personaId) throw { status: 403, message: 'No podés pujar por tu propio ítem' };
 
       const pm = persona.paymentMethods[0];
       if (!pm) throw { status: 403, message: 'Medio de pago no encontrado o no verificado' };

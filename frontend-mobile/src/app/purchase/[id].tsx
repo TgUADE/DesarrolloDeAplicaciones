@@ -133,13 +133,14 @@ export default function ResumenCompra() {
   const cover = imageUrl(p.producto?.fotos?.[0]?.url ?? undefined);
   const medio = p.medioPago ? `${TIPO_LABEL[p.medioPago.tipo] ?? p.medioPago.tipo} · ${p.medioPago.banco ?? ''} (${p.medioPago.moneda})` : null;
   const paid = p.status === 'pagado';
+  const envioStatus = p.envioEstado ?? 'pendiente';
   const steps = [
     { label: 'Compra registrada', done: true },
     { label: 'Pago confirmado', done: paid },
-    { label: 'Preparando envío', done: paid },
-    { label: 'En camino', done: false },
-    { label: 'Entregado', done: false },
+    { label: 'Enviado por la empresa', done: envioStatus === 'enviado' || envioStatus === 'recibido' },
+    { label: 'Recibido', done: envioStatus === 'recibido' },
   ];
+  const ENVIO_LABEL: Record<string, string> = { pendiente: paid ? 'Preparando envío' : 'Pendiente de pago', enviado: 'En camino', recibido: 'Entregado' };
 
   return (
     <View style={styles.root}>
@@ -197,12 +198,16 @@ export default function ResumenCompra() {
           ) : (
             <>
               <View style={styles.iconRow}><Ionicons name="cube-outline" size={16} color={Brand.text} /><Text style={styles.val}>Envío a domicilio</Text></View>
+              <View style={styles.iconRow}>
+                <Ionicons name={envioStatus === 'recibido' ? 'checkmark-circle' : envioStatus === 'enviado' ? 'navigate' : 'time-outline'} size={14} color={envioStatus === 'recibido' ? Brand.success : envioStatus === 'enviado' ? Brand.primary : Brand.textMuted} />
+                <Text style={styles.val}>{ENVIO_LABEL[envioStatus]}</Text>
+              </View>
               <Text style={styles.muted}>Seguimiento: {p.trackingCode ?? `ENV-${p.identificador}`}</Text>
               <Text style={styles.muted}>Origen: {p.producto?.deposito ?? 'depósito'}</Text>
               {p.producto?.seguro ? <Text style={styles.muted}>Póliza {p.producto.seguro.nroPoliza} — {p.producto.seguro.compania}</Text> : null}
               <View style={styles.inlineBtns}>
                 <Pressable onPress={() => setTracking(true)} style={styles.outlineBtn}><Ionicons name="navigate-outline" size={15} color={Brand.primary} /><Text style={styles.outlineBtnText}>Seguir envío</Text></Pressable>
-                {p.status !== 'derivado_justicia' ? (
+                {p.status !== 'derivado_justicia' && envioStatus === 'pendiente' ? (
                   <Pressable onPress={onRetire} disabled={busy === 'retire'} style={styles.outlineBtnDanger}><Text style={styles.outlineBtnDangerText}>{busy === 'retire' ? '...' : 'Retirar personalmente'}</Text></Pressable>
                 ) : null}
               </View>
@@ -243,7 +248,7 @@ export default function ResumenCompra() {
                 </View>
               ))}
             </View>
-            <Text style={[styles.muted, { fontStyle: 'italic', marginTop: space.sm }]}>Seguimiento de demostración.</Text>
+            <Text style={[styles.muted, { fontStyle: 'italic', marginTop: space.sm }]}>El estado del envío lo actualiza la empresa.</Text>
           </Pressable>
         </Pressable>
       </Modal>

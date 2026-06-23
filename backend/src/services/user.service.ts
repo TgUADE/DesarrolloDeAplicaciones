@@ -18,6 +18,8 @@ export const userService = {
       apellido: persona.app?.apellido ?? '',
       email: persona.app?.email ?? null,
       direccion: persona.direccion,
+      domicilioLegal: persona.direccion ?? null,
+      paisNacimiento: persona.app?.paisOrigen ?? null,
       cuentaCobro: persona.app?.cuentaCobro ?? null,
       categoria: persona.cliente?.categoria ?? 'comun',
       status: persona.app?.registrationStatus ?? 'pendiente',
@@ -27,14 +29,24 @@ export const userService = {
     };
   },
 
-  async update(id: number, data: { domicilioLegal?: string; cuentaCobro?: string }) {
-    return prisma.persona.update({
+  /**
+   * Actualiza los datos editables del perfil. NO se pueden modificar email,
+   * país de nacimiento ni categoría (se ignoran si vienen en el body).
+   */
+  async update(id: number, data: { nombre?: string; apellido?: string; domicilioLegal?: string; cuentaCobro?: string }) {
+    const personaData: Record<string, unknown> = {};
+    if (data.nombre?.trim()) personaData.nombre = data.nombre.trim();
+    if (data.domicilioLegal !== undefined) personaData.direccion = data.domicilioLegal.trim() || null;
+
+    const appData: Record<string, unknown> = {};
+    if (data.apellido?.trim()) appData.apellido = data.apellido.trim();
+    if (data.cuentaCobro !== undefined) appData.cuentaCobro = data.cuentaCobro.trim() || null;
+
+    await prisma.persona.update({
       where: { identificador: id },
-      data: {
-        direccion: data.domicilioLegal,
-        app: { update: { cuentaCobro: data.cuentaCobro } },
-      },
+      data: { ...personaData, ...(Object.keys(appData).length ? { app: { update: appData } } : {}) },
     });
+    return userService.findById(id);
   },
 
   async getMetrics(personaId: number) {

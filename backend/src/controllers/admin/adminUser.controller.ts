@@ -7,6 +7,7 @@ import { env } from '../../config/env';
 import { getSystemEmpleadoId } from '../../utils/systemEmpleado';
 import { toSiNo, fromSiNo } from '../../utils/siNo';
 import { paymentMethodService } from '../../services/paymentMethod.service';
+import { profileChangeRequestService } from '../../services/profileChangeRequest.service';
 
 export const adminUserController = {
   async list(req: Request, res: Response) {
@@ -171,5 +172,32 @@ export const adminUserController = {
         calificacionRiesgo: duenio.calificacionRiesgo,
       });
     } catch (err: any) { return serverError(res, err.message); }
+  },
+
+  // --- Solicitudes de cambio de datos de perfil ---
+  async listProfileChangeRequests(req: Request, res: Response) {
+    try {
+      const { estado } = req.query;
+      const requests = await profileChangeRequestService.listForAdmin(estado ? String(estado) : undefined);
+      return ok(res, { requests });
+    } catch (err: any) { return serverError(res, err.message); }
+  },
+
+  async approveProfileChangeRequest(req: Request, res: Response) {
+    try {
+      const request = await profileChangeRequestService.approve(req.params.id);
+      return ok(res, request);
+    } catch (err: any) {
+      return res.status(err.status || 500).json({ success: false, error: err.message });
+    }
+  },
+
+  async rejectProfileChangeRequest(req: Request, res: Response) {
+    try {
+      const request = await profileChangeRequestService.reject(req.params.id, req.body.motivoRechazo);
+      return ok(res, request);
+    } catch (err: any) {
+      return res.status(err.status || 500).json({ success: false, error: err.message });
+    }
   },
 };

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { getPurchases, markPurchasePaid, applyFine, type Purchase } from '../api';
+import { getPurchases, markPurchasePaid, applyFine, markPurchaseShipped, markPurchaseDelivered, type Purchase } from '../api';
 
 const STATUS_TABS = [
   { value: '', label: 'Todas' },
@@ -52,6 +52,13 @@ export default function Purchases() {
     if (!confirm('¿Aplicar multa a esta compra?')) return;
     try { await applyFine(id); load(); } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Error'); }
   };
+  const handleShipped = async (id: number) => {
+    try { await markPurchaseShipped(id); load(); } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Error'); }
+  };
+  const handleDelivered = async (id: number) => {
+    try { await markPurchaseDelivered(id); load(); } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Error'); }
+  };
+  const ENVIO_LABEL: Record<string, string> = { pendiente: 'Por enviar', enviado: 'Enviado', recibido: 'Recibido' };
 
   const fmt = (d: string) => new Date(d).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
   const money = (n: number, cur = 'ARS') =>
@@ -121,7 +128,11 @@ export default function Purchases() {
                         <td style={{ fontSize: 12, color: '#64748b' }}>{p.producto?.deposito ?? '—'}</td>
                         <td>
                           <span className={`badge ${STATUS_BADGE[p.status] ?? 'badge-gray'}`}>{p.status.replace(/_/g, ' ')}</span>
-                          {p.retiraPersonalmente ? <div style={{ fontSize: 10, color: '#94a3b8' }}>retiro personal</div> : null}
+                          {p.retiraPersonalmente ? (
+                            <div style={{ fontSize: 10, color: '#94a3b8' }}>retiro personal</div>
+                          ) : p.status === 'pagado' ? (
+                            <div style={{ fontSize: 10, color: '#64748b' }}>Envío: {ENVIO_LABEL[p.envioEstado ?? 'pendiente'] ?? p.envioEstado}</div>
+                          ) : null}
                         </td>
                         <td>
                           <div className="action-row">
@@ -130,6 +141,15 @@ export default function Purchases() {
                                 <button className="btn btn-sm btn-success" onClick={() => handlePaid(p.identificador)}>💵 Marcar pagada</button>
                                 <button className="btn btn-sm btn-warning" onClick={() => handleFine(p.identificador)}>⚠️ Multar</button>
                               </>
+                            )}
+                            {p.status === 'pagado' && !p.retiraPersonalmente && (p.envioEstado ?? 'pendiente') === 'pendiente' && (
+                              <button className="btn btn-sm btn-primary" onClick={() => handleShipped(p.identificador)}>📦 Enviado</button>
+                            )}
+                            {p.status === 'pagado' && !p.retiraPersonalmente && p.envioEstado === 'enviado' && (
+                              <button className="btn btn-sm btn-success" onClick={() => handleDelivered(p.identificador)}>✅ Recibido</button>
+                            )}
+                            {p.status === 'pagado' && !p.retiraPersonalmente && p.envioEstado === 'recibido' && (
+                              <span style={{ fontSize: 12, color: '#16a34a' }}>Entregado ✓</span>
                             )}
                           </div>
                         </td>

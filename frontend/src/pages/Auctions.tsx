@@ -58,6 +58,7 @@ export default function Auctions() {
   // Agregar piezas disponibles al catálogo
   const [adding, setAdding] = useState(false);
   const [available, setAvailable] = useState<AdminProducto[]>([]);
+  const [availOther, setAvailOther] = useState(0); // piezas disponibles en OTRA moneda
   const [availLoading, setAvailLoading] = useState(false);
   const [priceById, setPriceById] = useState<Record<number, string>>({});
   const [addBusy, setAddBusy] = useState<number | null>(null);
@@ -207,8 +208,9 @@ export default function Auctions() {
     setAvailLoading(true);
     setError('');
     try {
-      const data = await getAvailableItems(itemsFor?.moneda);
+      const [data, all] = await Promise.all([getAvailableItems(itemsFor?.moneda), getAvailableItems()]);
       setAvailable(data.items);
+      setAvailOther(all.items.length - data.items.length); // disponibles en otra moneda
       const prices: Record<number, string> = {};
       for (const p of data.items) prices[p.identificador] = p.seguro?.importe != null ? String(Math.round(Number(p.seguro.importe))) : '';
       setPriceById(prices);
@@ -445,6 +447,9 @@ export default function Auctions() {
             ) : available.length === 0 ? (
               <p style={{ color: '#94a3b8', textAlign: 'center', padding: 24 }}>
                 No hay piezas disponibles en {itemsFor.moneda}. Aceptá solicitudes de venta en esa moneda para generar piezas.
+                {availOther > 0 && (
+                  <><br /><br />💡 Hay {availOther} pieza{availOther !== 1 ? 's' : ''} disponible{availOther !== 1 ? 's' : ''} en <strong>otra moneda</strong>. Como esta subasta es en {itemsFor.moneda}, solo entran piezas en {itemsFor.moneda}. Para esas piezas, creá/usá una subasta de su moneda.</>
+                )}
               </p>
             ) : (
               <div className="table-wrap" style={{ maxHeight: 360, overflow: 'auto' }}>
