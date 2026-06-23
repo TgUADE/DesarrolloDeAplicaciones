@@ -173,7 +173,7 @@ export const auctionService = {
   async join(subastaId: number, userId: string) {
     const personaId = parseInt(userId);
     const [subasta, persona] = await Promise.all([
-      prisma.subasta.findUnique({ where: { identificador: subastaId } }),
+      prisma.subasta.findUnique({ where: { identificador: subastaId }, include: { app: true } }),
       prisma.persona.findUnique({ where: { identificador: personaId }, include: { cliente: true, app: true, paymentMethods: { where: { verificado: true, activo: true } } } }),
     ]);
     if (!subasta) throw { status: 404, message: 'Subasta no encontrada' };
@@ -196,7 +196,8 @@ export const auctionService = {
       update: { app: { upsert: { create: { isActive: true }, update: { isActive: true, joinedAt: new Date(), leftAt: null } } } },
     });
 
-    return { canBid: persona.paymentMethods.length > 0 };
+    const auctionMoneda = subasta.app?.moneda ?? 'ARS';
+    return { canBid: persona.paymentMethods.some((pm) => paymentMethodService.covers(pm.moneda, auctionMoneda)) };
   },
 
   async leave(subastaId: number, userId: string) {
@@ -227,8 +228,8 @@ export const auctionService = {
       if (!pm) throw { status: 403, message: 'Medio de pago no encontrado o no verificado' };
 
       const moneda = subasta!.app?.moneda ?? 'ARS';
-      if (moneda === 'USD' && !paymentMethodService.isUsdCapable(pm.tipo)) {
-        throw { status: 400, message: 'Esta subasta es en USD, usá un medio de pago internacional' };
+      if (!paymentMethodService.covers(pm.moneda, moneda)) {
+        throw { status: 400, message: `Necesitás un medio de pago en ${moneda} para pujar en esta subasta` };
       }
 
       if (pm.tipo === 'cheque_certificado' && pm.montoGarantia) {
@@ -394,12 +395,18 @@ export const auctionService = {
 
   async addItem(subastaId: number, productoId: number, precioBase?: number, comision?: number) {
     const [subasta, producto] = await Promise.all([
-      prisma.subasta.findUnique({ where: { identificador: subastaId } }),
+      prisma.subasta.findUnique({ where: { identificador: subastaId }, include: { app: true } }),
       prisma.producto.findUnique({ where: { identificador: productoId }, include: { app: true } }),
     ]);
     if (!subasta) throw { status: 404, message: 'Subasta no encontrada' };
     if (!producto) throw { status: 404, message: 'Producto no encontrado' };
     if (producto.app?.status !== 'disponible') throw { status: 400, message: 'El producto no está disponible' };
+
+    const auctionMoneda = subasta.app?.moneda ?? 'ARS';
+    const itemMoneda = producto.app?.moneda ?? 'ARS';
+    if (itemMoneda !== auctionMoneda) {
+      throw { status: 400, message: `El ítem está valuado en ${itemMoneda} y la subasta es en ${auctionMoneda}. Solo podés agregar ítems en ${auctionMoneda}.` };
+    }
 
     let catalogo = await prisma.catalogo.findFirst({ where: { subastaId } });
     if (!catalogo) {

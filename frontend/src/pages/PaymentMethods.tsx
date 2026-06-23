@@ -3,9 +3,16 @@ import { getPaymentMethods, verifyPaymentMethod, type AdminPaymentMethod } from 
 
 const TABS = [
   { value: 'pendiente', label: 'Pendientes' },
-  { value: 'verificado', label: 'Verificados' },
+  { value: 'aprobada', label: 'Aprobados' },
+  { value: 'rechazada', label: 'Rechazados' },
   { value: '', label: 'Todos' },
 ];
+
+const ESTADO_META: Record<string, { label: string; badge: string }> = {
+  pendiente: { label: 'Pendiente', badge: 'badge-yellow' },
+  aprobada: { label: 'Aprobado', badge: 'badge-green' },
+  rechazada: { label: 'Rechazado', badge: 'badge-red' },
+};
 
 const TYPE_LABEL: Record<string, string> = {
   cuenta_bancaria_nacional: 'Cuenta bancaria nacional',
@@ -32,14 +39,12 @@ export default function PaymentMethods({ onCountChange }: Props) {
     setLoading(true);
     setError('');
     try {
-      const verificado = filter === '' ? undefined : filter === 'verificado';
-      const data = await getPaymentMethods(verificado);
+      const data = await getPaymentMethods(filter || undefined);
       setPms(data.paymentMethods);
-      // Mantener el badge de pendientes al día.
       if (filter === 'pendiente') {
         onCountChange(data.paymentMethods.length);
       } else {
-        const pend = await getPaymentMethods(false);
+        const pend = await getPaymentMethods('pendiente');
         onCountChange(pend.paymentMethods.length);
       }
     } catch (e: unknown) {
@@ -49,11 +54,11 @@ export default function PaymentMethods({ onCountChange }: Props) {
     }
   };
 
-  const setVerified = async (pm: AdminPaymentMethod, value: boolean) => {
+  const setEstado = async (pm: AdminPaymentMethod, estado: 'aprobada' | 'rechazada' | 'pendiente') => {
     setBusy(pm.id);
     setError('');
     try {
-      await verifyPaymentMethod(pm.personaId, pm.id, value);
+      await verifyPaymentMethod(pm.personaId, pm.id, estado);
       await load();
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Error al actualizar');
@@ -72,17 +77,14 @@ export default function PaymentMethods({ onCountChange }: Props) {
     <>
       <div className="page-header">
         <h1>Medios de pago</h1>
-        <p>{pms.length} medio{pms.length !== 1 ? 's' : ''} de pago</p>
+        <p>Validación de medios de pago de los clientes</p>
       </div>
 
       {error && <div className="error-banner">⚠️ {error}</div>}
 
       <div className="tabs">
         {TABS.map((t) => (
-          <button
-            key={t.value}
-            className={`tab-btn ${filter === t.value ? 'active' : ''}`}
-            onClick={() => setFilter(t.value)}>
+          <button key={t.value} className={`tab-btn ${filter === t.value ? 'active' : ''}`} onClick={() => setFilter(t.value)}>
             {t.label}
           </button>
         ))}
@@ -101,40 +103,42 @@ export default function PaymentMethods({ onCountChange }: Props) {
                   <th>Moneda</th>
                   <th>Datos</th>
                   <th>Estado</th>
-                  <th>Acción</th>
+                  <th>Acciones</th>
                 </tr>
               </thead>
               <tbody>
                 {pms.length === 0 ? (
                   <tr className="empty-row"><td colSpan={6}>No hay medios de pago en este estado</td></tr>
                 ) : (
-                  pms.map((pm) => (
-                    <tr key={pm.id}>
-                      <td>
-                        <strong>{pm.persona ? `${pm.persona.nombre} ${pm.persona.apellido}` : '—'}</strong>
-                        {pm.persona?.email ? <div style={{ color: '#64748b', fontSize: 12 }}>{pm.persona.email}</div> : null}
-                      </td>
-                      <td>{TYPE_LABEL[pm.tipo] ?? pm.tipo}</td>
-                      <td><span className="badge badge-gray">{pm.moneda}</span></td>
-                      <td style={{ color: '#64748b', fontSize: 13 }}>{datos(pm)}</td>
-                      <td>
-                        <span className={`badge ${pm.verificado ? 'badge-green' : 'badge-yellow'}`}>
-                          {pm.verificado ? 'Verificado' : 'Pendiente'}
-                        </span>
-                      </td>
-                      <td>
-                        {pm.verificado ? (
-                          <button className="btn btn-sm btn-secondary" disabled={busy === pm.id} onClick={() => setVerified(pm, false)}>
-                            {busy === pm.id ? '...' : 'Quitar verificación'}
-                          </button>
-                        ) : (
-                          <button className="btn btn-sm btn-success" disabled={busy === pm.id} onClick={() => setVerified(pm, true)}>
-                            {busy === pm.id ? '...' : '✓ Verificar'}
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  ))
+                  pms.map((pm) => {
+                    const m = ESTADO_META[pm.estado] ?? { label: pm.estado, badge: 'badge-gray' };
+                    return (
+                      <tr key={pm.id}>
+                        <td>
+                          <strong>{pm.persona ? `${pm.persona.nombre} ${pm.persona.apellido}` : '—'}</strong>
+                          {pm.persona?.email ? <div style={{ color: '#94a3b8', fontSize: 11 }}>{pm.persona.email}</div> : null}
+                        </td>
+                        <td>{TYPE_LABEL[pm.tipo] ?? pm.tipo}</td>
+                        <td><span className="badge badge-gray">{pm.moneda}</span></td>
+                        <td style={{ color: '#64748b', fontSize: 13 }}>{datos(pm)}</td>
+                        <td><span className={`badge ${m.badge}`}>{m.label}</span></td>
+                        <td>
+                          <div className="action-row">
+                            {pm.estado !== 'aprobada' && (
+                              <button className="btn btn-sm btn-success" disabled={busy === pm.id} onClick={() => setEstado(pm, 'aprobada')}>
+                                {busy === pm.id ? '...' : '✓ Aprobar'}
+                              </button>
+                            )}
+                            {pm.estado !== 'rechazada' && (
+                              <button className="btn btn-sm btn-danger" disabled={busy === pm.id} onClick={() => setEstado(pm, 'rechazada')}>
+                                {busy === pm.id ? '...' : '✗ Rechazar'}
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>

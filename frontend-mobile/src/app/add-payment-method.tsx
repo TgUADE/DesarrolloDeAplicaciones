@@ -21,7 +21,7 @@ const PAYMENT_METHODS: Array<{ id: PaymentMethodType; titulo: string; detalle: s
 
 export default function AddPaymentMethod() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ userId?: string; tipo?: PaymentMethodType }>();
+  const params = useLocalSearchParams<{ userId?: string; tipo?: PaymentMethodType; return?: string }>();
 
   const [userId, setUserId] = useState(params.userId ?? '');
   const [tipoBase, setTipoBase] = useState<PaymentMethodType>(params.tipo ?? 'cuenta_bancaria_nacional');
@@ -29,7 +29,7 @@ export default function AddPaymentMethod() {
   const [paisBanco, setPaisBanco] = useState('');
   const [tipoCuenta, setTipoCuenta] = useState('');
   const [numeroCuenta, setNumeroCuenta] = useState('');
-  const [moneda, setMoneda] = useState<'ARS' | 'USD'>('ARS');
+  const [moneda, setMoneda] = useState<'ARS' | 'USD' | 'AMBAS'>('ARS');
   const [numeroTarjeta, setNumeroTarjeta] = useState('');
   const [titularTarjeta, setTitularTarjeta] = useState('');
   const [vencimiento, setVencimiento] = useState('');
@@ -45,12 +45,20 @@ export default function AddPaymentMethod() {
     });
   }, [userId]);
 
+  const isCardBase = tipoBase.startsWith('tarjeta_credito');
+
+  // Las cuentas/cheques son de una sola moneda; "Ambas" solo aplica a tarjetas.
+  useEffect(() => {
+    if (!isCardBase && moneda === 'AMBAS') setMoneda('ARS');
+  }, [isCardBase, moneda]);
+
   const tipo = useMemo<PaymentMethodType>(() => {
     if (tipoBase.startsWith('cuenta_bancaria')) {
       return moneda === 'USD' ? 'cuenta_bancaria_extranjera' : 'cuenta_bancaria_nacional';
     }
     if (tipoBase.startsWith('tarjeta_credito')) {
-      return moneda === 'USD' ? 'tarjeta_credito_internacional' : 'tarjeta_credito_nacional';
+      // Una tarjeta en USD o que cubre ambas monedas se registra como internacional.
+      return moneda === 'ARS' ? 'tarjeta_credito_nacional' : 'tarjeta_credito_internacional';
     }
     return 'cheque_certificado';
   }, [moneda, tipoBase]);
@@ -126,7 +134,7 @@ export default function AddPaymentMethod() {
         vencimiento: cleanVencimiento || undefined,
         montoGarantia: cleanMontoGarantia ? Number(cleanMontoGarantia) : undefined,
       });
-      router.replace('/home');
+      router.replace(params.return === 'list' ? '/payment-methods' : '/home');
     } catch (err: any) {
       setError(getApiErrorMessage(err, 'No se pudo agregar el medio de pago.'));
     } finally {
@@ -173,17 +181,18 @@ export default function AddPaymentMethod() {
             </>
           ) : null}
 
-          <Text style={styles.label}>Moneda de cuenta *</Text>
+          <Text style={styles.label}>Moneda *</Text>
           <View style={styles.segment}>
-            {(['ARS', 'USD'] as const).map((value) => (
+            {(isCardBase ? (['ARS', 'USD', 'AMBAS'] as const) : (['ARS', 'USD'] as const)).map((value) => (
               <Pressable
                 key={value}
                 onPress={() => setMoneda(value)}
                 style={[styles.segmentOption, moneda === value && styles.segmentOptionSelected]}>
-                <Text style={[styles.segmentText, moneda === value && styles.segmentTextSelected]}>{value}</Text>
+                <Text style={[styles.segmentText, moneda === value && styles.segmentTextSelected]}>{value === 'AMBAS' ? 'Ambas' : value}</Text>
               </Pressable>
             ))}
           </View>
+          {isCardBase ? <Text style={styles.monedaHint}>"Ambas" = la tarjeta sirve para subastas en pesos y en dólares.</Text> : null}
 
           {tipo.startsWith('tarjeta_credito') ? (
             <>
@@ -273,6 +282,7 @@ const styles = StyleSheet.create({
   segmentOptionSelected: { backgroundColor: Brand.primary },
   segmentText: { color: Brand.textMuted, fontWeight: FontWeight.medium },
   segmentTextSelected: { color: Brand.textOnPrimary },
+  monedaHint: { fontSize: FontSize.xs, color: Brand.textMuted, marginTop: -space.sm + 2, marginBottom: space.md },
   proofLabel: { fontSize: FontSize.sm, color: Brand.textMuted, marginBottom: space.sm },
   proofBox: {
     alignSelf: 'center',

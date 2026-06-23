@@ -57,7 +57,7 @@ export default function SubastaEnVivo() {
   const [notice, setNotice] = useState('');
   const [endsAt, setEndsAt] = useState<number | null>(null);
   const [now, setNow] = useState(Date.now());
-  const [won, setWon] = useState<{ piece: string } | null>(null);
+  const [won, setWon] = useState<{ piece: string; purchaseId: number | null } | null>(null);
 
   const socketRef = useRef<Socket | null>(null);
   const meIdRef = useRef<string | null>(null);
@@ -117,9 +117,9 @@ export default function SubastaEnVivo() {
         setBids(history);
 
         const verified = pms.filter((p) => p.verificado && p.activo);
-        // Para subastas en USD el medio de pago debe ser internacional.
-        const usdCapable = (t: string) => ['cuenta_bancaria_extranjera', 'tarjeta_credito_internacional', 'cheque_certificado'].includes(t);
-        const compatibles = a.moneda === 'USD' ? verified.filter((p) => usdCapable(p.tipo)) : verified;
+        // El medio de pago debe cubrir la moneda de la subasta (o ser una tarjeta "AMBAS").
+        const covers = (m: string) => m === a.moneda || m === 'AMBAS';
+        const compatibles = verified.filter((p) => covers(p.moneda));
         const usable = compatibles[0];
         setPmId(usable?.id ?? null);
 
@@ -129,7 +129,7 @@ export default function SubastaEnVivo() {
         } else if (verified.length === 0) {
           setBidNotice('Tu medio de pago está pendiente de verificación. Vas a poder pujar cuando la empresa lo apruebe.');
         } else if (!usable) {
-          setBidNotice('Esta subasta es en USD: necesitás un medio de pago internacional verificado.');
+          setBidNotice(`Esta subasta es en ${a.moneda}: necesitás un medio de pago en ${a.moneda} (o una tarjeta que cubra ambas monedas) verificado.`);
         } else {
           setBidNotice('');
         }
@@ -197,10 +197,10 @@ export default function SubastaEnVivo() {
         );
       });
       // Pieza adjudicada (cerrada por el martillero).
-      s.on('item:sold', (payload: { closedItemId: string; winnerId?: number | string | null; nextItemId?: number | null }) => {
+      s.on('item:sold', (payload: { closedItemId: string; winnerId?: number | string | null; purchaseId?: number | null; nextItemId?: number | null }) => {
         if (payload.winnerId != null && String(payload.winnerId) === meIdRef.current) {
           // Gané la pieza → pantalla de ganador.
-          setWon({ piece: itemRef.current?.descripcion ?? 'la pieza' });
+          setWon({ piece: itemRef.current?.descripcion ?? 'la pieza', purchaseId: payload.purchaseId ?? null });
         } else {
           setNotice('Se adjudicó la pieza anterior.');
         }
@@ -281,7 +281,7 @@ export default function SubastaEnVivo() {
           <Pressable onPress={() => { setWon(null); refreshCurrent(); }} style={({ pressed }) => [styles.wonPrimary, pressed && styles.dim]}>
             <Text style={styles.wonPrimaryText}>Volver a la subasta</Text>
           </Pressable>
-          <Pressable onPress={() => { setWon(null); router.push('/mis-compras'); }} style={({ pressed }) => [styles.wonSecondary, pressed && styles.dim]}>
+          <Pressable onPress={() => { const pid = won.purchaseId; setWon(null); router.push(pid != null ? `/purchase/${pid}` : '/mis-compras'); }} style={({ pressed }) => [styles.wonSecondary, pressed && styles.dim]}>
             <Text style={styles.wonSecondaryText}>Ir a la compra</Text>
           </Pressable>
         </View>

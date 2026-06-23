@@ -9,7 +9,7 @@ export type PaymentMethodType =
 
 export interface PaymentMethodPayload {
   tipo: PaymentMethodType;
-  moneda: 'ARS' | 'USD';
+  moneda: 'ARS' | 'USD' | 'AMBAS';
   banco?: string;
   numeroCuenta?: string;
   swift?: string;
@@ -26,11 +26,19 @@ export async function addPaymentMethod(userId: string, payload: PaymentMethodPay
 export interface PaymentMethod {
   id: string;
   tipo: PaymentMethodType;
-  moneda: 'ARS' | 'USD';
+  moneda: 'ARS' | 'USD' | 'AMBAS';
+  estado: 'pendiente' | 'aprobada' | 'rechazada';
   verificado: boolean;
   activo: boolean;
   banco?: string | null;
+  numeroCuenta?: string | null;
   numeroTarjeta?: string | null;
+  montoGarantia?: number | string | null;
+}
+
+/** DELETE /api/users/:id/payment-methods/:pmId → da de baja un medio de pago. */
+export async function removePaymentMethod(userId: string, pmId: string): Promise<void> {
+  await client.delete(`/users/${userId}/payment-methods/${pmId}`);
 }
 
 /** GET /api/users/:id/payment-methods → medios de pago del usuario. */

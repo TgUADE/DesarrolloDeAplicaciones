@@ -1,16 +1,18 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { Image } from 'expo-image';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useState } from 'react';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { getStoredUser } from '@/api/auth';
-import { listPurchases, retirePurchase, type Purchase } from '@/api/purchases';
+import { listPurchases, type Purchase } from '@/api/purchases';
 import { Badge } from '@/components/ui/badge';
 import { ScreenHeader } from '@/components/ui/screen-header';
 import { Brand, FontSize, FontWeight, Radius, space } from '@/constants/theme';
 import { getApiErrorMessage } from '@/utils/errors';
 import { formatMoney } from '@/utils/format';
+import { imageUrl } from '@/utils/media';
 
 const STATUS_META: Record<string, { label: string; color: string }> = {
   pendiente_pago: { label: 'Pendiente de pago', color: Brand.warning },
@@ -24,10 +26,8 @@ export default function MisCompras() {
   const [purchases, setPurchases] = useState<Purchase[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [busy, setBusy] = useState<number | null>(null);
 
-  const load = async () => {
-    setLoading(true);
+  const load = useCallback(async () => {
     setError('');
     try {
       const me = await getStoredUser();
@@ -41,39 +41,11 @@ export default function MisCompras() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [router]);
 
-  useEffect(() => {
-    load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  useFocusEffect(useCallback(() => { load(); }, [load]));
 
-  const onRetire = (p: Purchase) => {
-    Alert.alert(
-      'Retirar personalmente',
-      'Si retirás el bien personalmente perdés la cobertura del seguro. ¿Confirmás?',
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        {
-          text: 'Confirmar',
-          style: 'destructive',
-          onPress: async () => {
-            setBusy(p.identificador);
-            try {
-              await retirePurchase(p.identificador);
-              await load();
-            } catch (err) {
-              Alert.alert('Error', getApiErrorMessage(err, 'No se pudo registrar el retiro.'));
-            } finally {
-              setBusy(null);
-            }
-          },
-        },
-      ],
-    );
-  };
-
-  const total = (p: Purchase) => Number(p.importe) + Number(p.comision) + Number(p.costoEnvio ?? 0);
+  const total = (p: Purchase) => Number(p.importe) + Number(p.comision) + (p.retiraPersonalmente ? 0 : Number(p.costoEnvio ?? 0)) + Number(p.multa ?? 0);
 
   return (
     <View style={styles.root}>
@@ -94,45 +66,34 @@ export default function MisCompras() {
           purchases.map((p) => {
             const meta = STATUS_META[p.status] ?? { label: p.status, color: Brand.textMuted };
             const cur = p.moneda ?? 'ARS';
+            const cover = imageUrl(p.producto?.fotos?.[0]?.url ?? undefined);
             return (
-              <View key={p.identificador} style={styles.card}>
-                <View style={styles.rowBetween}>
-                  <Text style={styles.title} numberOfLines={1}>
-                    {p.producto?.descripcionCompleta ?? `Pieza #${p.producto?.numeroPieza ?? p.identificador}`}
-                  </Text>
-                  <Badge label={meta.label} color={meta.color} />
-                </View>
-
-                <View style={styles.line}><Text style={styles.lbl}>Oferta</Text><Text style={styles.val}>{formatMoney(p.importe, cur)}</Text></View>
-                <View style={styles.line}><Text style={styles.lbl}>Comisiones</Text><Text style={styles.val}>{formatMoney(p.comision, cur)}</Text></View>
-                <View style={styles.line}><Text style={styles.lbl}>Envío</Text><Text style={styles.val}>{p.retiraPersonalmente ? 'Retiro personal' : formatMoney(p.costoEnvio ?? 0, cur)}</Text></View>
-                <View style={[styles.line, styles.totalLine]}><Text style={styles.totalLbl}>Total a pagar</Text><Text style={styles.totalVal}>{formatMoney(total(p), cur)}</Text></View>
-
-                <View style={styles.deposito}>
-                  <View style={styles.depTitleRow}>
-                    <Ionicons name="cube-outline" size={14} color={Brand.text} />
-                    <Text style={styles.depTitle}>Dónde retirar</Text>
+              <Pressable
+                key={p.identificador}
+                onPress={() => router.push(`/purchase/${p.identificador}`)}
+                style={({ pressed }) => [styles.card, pressed && styles.dim]}>
+                {cover ? (
+                  <Image source={{ uri: cover }} style={styles.thumb} contentFit="cover" />
+                ) : (
+                  <View style={[styles.thumb, styles.thumbEmpty]}><Ionicons name="image-outline" size={20} color={Brand.textMuted} /></View>
+                )}
+                <View style={styles.cardBody}>
+                  <View style={styles.rowBetween}>
+                    <Text style={styles.title} numberOfLines={1}>
+                      {p.producto?.descripcionCompleta ?? `Pieza #${p.producto?.numeroPieza ?? p.identificador}`}
+                    </Text>
+                    <Badge label={meta.label} color={meta.color} />
                   </View>
-                  <Text style={styles.depText}>{p.producto?.deposito ?? 'A confirmar'}{p.producto?.ubicacion ? ` · ${p.producto.ubicacion}` : ''}</Text>
-                  {p.producto?.seguro ? (
-                    <View style={styles.depTitleRow}>
-                      <Ionicons name="shield-checkmark-outline" size={13} color={Brand.textMuted} />
-                      <Text style={styles.depText}>Póliza {p.producto.seguro.nroPoliza}</Text>
+                  <Text style={styles.factura}>{p.facturaNro ?? `Compra #${p.identificador}`}</Text>
+                  <View style={styles.rowBetween}>
+                    <Text style={styles.totalVal}>{formatMoney(total(p), cur)}</Text>
+                    <View style={styles.verRow}>
+                      <Text style={styles.verText}>Ver resumen</Text>
+                      <Ionicons name="chevron-forward" size={16} color={Brand.primary} />
                     </View>
-                  ) : null}
-                </View>
-
-                {!p.retiraPersonalmente && p.status !== 'derivado_justicia' ? (
-                  <Pressable onPress={() => onRetire(p)} disabled={busy === p.identificador} style={({ pressed }) => [styles.retireBtn, (pressed || busy === p.identificador) && styles.dim]}>
-                    <Text style={styles.retireText}>{busy === p.identificador ? '...' : 'Retirar personalmente'}</Text>
-                  </Pressable>
-                ) : p.retiraPersonalmente ? (
-                  <View style={styles.retiradoRow}>
-                    <Ionicons name="checkmark-circle" size={14} color={Brand.textMuted} />
-                    <Text style={styles.retiradoNote}>Marcado para retiro personal (sin cobertura de seguro)</Text>
                   </View>
-                ) : null}
-              </View>
+                </View>
+              </Pressable>
             );
           })
         )}
@@ -148,22 +109,15 @@ const styles = StyleSheet.create({
   errorText: { color: Brand.danger, fontSize: FontSize.sm, textAlign: 'center' },
   retry: { color: Brand.primary, fontWeight: FontWeight.medium },
   empty: { fontSize: FontSize.sm, color: Brand.textMuted, textAlign: 'center', marginTop: space.xl },
-  card: { backgroundColor: Brand.surface, borderWidth: 1, borderColor: Brand.border, borderRadius: Radius.md, padding: space.md, marginBottom: space.md, gap: 4 },
-  rowBetween: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: space.sm, marginBottom: space.xs },
-  title: { flex: 1, fontSize: FontSize.base, fontWeight: FontWeight.bold, color: Brand.text },
-  line: { flexDirection: 'row', justifyContent: 'space-between' },
-  lbl: { fontSize: FontSize.sm, color: Brand.textMuted },
-  val: { fontSize: FontSize.sm, color: Brand.text },
-  totalLine: { marginTop: 4, paddingTop: 6, borderTopWidth: 1, borderTopColor: Brand.border },
-  totalLbl: { fontSize: FontSize.sm, fontWeight: FontWeight.bold, color: Brand.text },
+  card: { flexDirection: 'row', gap: space.md, backgroundColor: Brand.surface, borderWidth: 1, borderColor: Brand.border, borderRadius: Radius.md, padding: space.md, marginBottom: space.sm + 2 },
+  thumb: { width: 60, height: 60, borderRadius: Radius.sm, backgroundColor: Brand.bg },
+  thumbEmpty: { alignItems: 'center', justifyContent: 'center' },
+  cardBody: { flex: 1, gap: 3, justifyContent: 'center' },
+  rowBetween: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: space.sm },
+  title: { flex: 1, fontSize: FontSize.sm, fontWeight: FontWeight.bold, color: Brand.text },
+  factura: { fontSize: FontSize.xs, color: Brand.textMuted },
   totalVal: { fontSize: FontSize.base, fontWeight: FontWeight.bold, color: Brand.accent },
-  deposito: { marginTop: space.sm, backgroundColor: Brand.bg, borderRadius: Radius.sm, padding: space.sm },
-  depTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 },
-  depTitle: { fontSize: FontSize.xs, fontWeight: FontWeight.bold, color: Brand.text },
-  depText: { fontSize: FontSize.xs, color: Brand.textMuted, marginTop: 2 },
-  retireBtn: { marginTop: space.sm, borderWidth: 1, borderColor: Brand.danger, borderRadius: Radius.sm, paddingVertical: 10, alignItems: 'center' },
-  retireText: { color: Brand.danger, fontWeight: FontWeight.medium, fontSize: FontSize.sm },
-  retiradoRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: space.sm },
-  retiradoNote: { flex: 1, fontSize: FontSize.xs, color: Brand.textMuted, fontStyle: 'italic' },
-  dim: { opacity: 0.6 },
+  verRow: { flexDirection: 'row', alignItems: 'center', gap: 2 },
+  verText: { fontSize: FontSize.xs, color: Brand.primary, fontWeight: FontWeight.medium },
+  dim: { opacity: 0.7 },
 });

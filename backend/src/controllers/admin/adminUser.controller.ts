@@ -111,17 +111,24 @@ export const adminUserController = {
 
   async listPaymentMethods(req: Request, res: Response) {
     try {
-      const { verificado } = req.query;
-      const filter = verificado === undefined ? undefined : verificado === 'true';
-      const paymentMethods = await paymentMethodService.listForAdmin(filter);
+      const { estado } = req.query;
+      const paymentMethods = await paymentMethodService.listForAdmin(estado ? String(estado) : undefined);
       return ok(res, { paymentMethods });
     } catch (err: any) { return serverError(res, err.message); }
   },
 
   async verifyPaymentMethod(req: Request, res: Response) {
     try {
-      const { verificado } = req.body;
-      const pm = await prisma.paymentMethod.update({ where: { id: req.params.pmId }, data: { verificado: Boolean(verificado) } });
+      // Acepta el nuevo `estado` (aprobada/rechazada/pendiente); compat con `verificado` booleano.
+      const { estado, verificado } = req.body;
+      const nuevoEstado = (estado as string) ?? (verificado ? 'aprobada' : 'pendiente');
+      if (!['pendiente', 'aprobada', 'rechazada'].includes(nuevoEstado)) {
+        return badRequest(res, 'Estado inválido');
+      }
+      const pm = await prisma.paymentMethod.update({
+        where: { id: req.params.pmId },
+        data: { estado: nuevoEstado, verificado: nuevoEstado === 'aprobada' },
+      });
       return ok(res, pm);
     } catch (err: any) { return serverError(res, err.message); }
   },

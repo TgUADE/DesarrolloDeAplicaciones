@@ -207,7 +207,7 @@ export default function Auctions() {
     setAvailLoading(true);
     setError('');
     try {
-      const data = await getAvailableItems();
+      const data = await getAvailableItems(itemsFor?.moneda);
       setAvailable(data.items);
       const prices: Record<number, string> = {};
       for (const p of data.items) prices[p.identificador] = p.seguro?.importe != null ? String(Math.round(Number(p.seguro.importe))) : '';
@@ -438,13 +438,13 @@ export default function Auctions() {
           <div className="modal" style={{ width: 640 }} onClick={(e) => e.stopPropagation()}>
             <h2>➕ Agregar pieza — {itemsFor.titulo}</h2>
             <p style={{ color: '#64748b', fontSize: 13, marginTop: -8, marginBottom: 12 }}>
-              Piezas aceptadas y disponibles (sin asignar a otra subasta). El precio base sugerido es el del seguro.
+              Piezas aceptadas y disponibles (sin asignar a otra subasta), <strong>solo en {itemsFor.moneda}</strong> (la moneda de esta subasta). El precio base sugerido es el del seguro.
             </p>
             {availLoading ? (
               <div className="spinner">Cargando...</div>
             ) : available.length === 0 ? (
               <p style={{ color: '#94a3b8', textAlign: 'center', padding: 24 }}>
-                No hay piezas disponibles. Aceptá solicitudes de venta para generar piezas.
+                No hay piezas disponibles en {itemsFor.moneda}. Aceptá solicitudes de venta en esa moneda para generar piezas.
               </p>
             ) : (
               <div className="table-wrap" style={{ maxHeight: 360, overflow: 'auto' }}>

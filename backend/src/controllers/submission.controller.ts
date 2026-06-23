@@ -7,13 +7,17 @@ export const submissionController = {
   async create(req: Request, res: Response) {
     try {
       // Las imágenes llegan como base64 en JSON (el mobile no puede enviar FormData).
-      const { descripcion, datosHistoricos, cuentaCobro, declaracionPropiedad, origenLicito, precioSugerido, images } = req.body;
+      const { nombre, descripcion, artista, fechaEpoca, datosHistoricos, cuentaCobro, moneda, declaracionPropiedad, origenLicito, precioSugerido, images } = req.body;
       const arr: string[] = Array.isArray(images) ? images : [];
       const imageUrls = arr.map((b64, i) => saveBase64Image(b64, `sub-${i}`));
       const submission = await submissionService.create(parseInt(req.user!.userId), {
+        nombre,
         descripcion,
+        artista,
+        fechaEpoca,
         datosHistoricos,
         cuentaCobro,
+        moneda,
         declaracionPropiedad: declaracionPropiedad === 'true' || declaracionPropiedad === true,
         origenLicito: origenLicito === 'true' || origenLicito === true,
         precioSugerido: precioSugerido != null && precioSugerido !== '' ? Number(precioSugerido) : undefined,
