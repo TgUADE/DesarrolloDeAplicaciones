@@ -5,6 +5,10 @@ import { flattenProducto } from '../utils/flatten';
 import { fromSiNo } from '../utils/siNo';
 import { Request } from 'express';
 
+/** Premio (prima) anual estimado de una póliza = % del valor asegurado.
+ *  Se usa para mostrar/cobrar la diferencia al aumentar el valor asegurado. */
+const PREMIO_RATE = 0.02;
+
 export const userService = {
   async findById(id: number) {
     const persona = await prisma.persona.findUnique({
@@ -50,12 +54,17 @@ export const userService = {
   },
 
   async getMetrics(personaId: number) {
-    const [participaciones, victorias, pujos] = await Promise.all([
+    const [participaciones, victorias, pujos, pujosPorSubasta] = await Promise.all([
       prisma.asistente.count({ where: { clienteId: personaId } }),
       prisma.registroDeSubasta.count({ where: { clienteId: personaId, app: { status: 'pagado' } } }),
       prisma.pujo.findMany({
         where: { asistente: { clienteId: personaId }, app: { confirmada: true } },
-        select: { importe: true, app: { select: { moneda: true } } },
+        select: { importe: true, app: { select: { moneda: true } }, asistente: { select: { subasta: { select: { categoria: true } } } } },
+      }),
+      prisma.pujo.groupBy({
+        by: ['asistenteId'],
+        where: { asistente: { clienteId: personaId }, app: { confirmada: true } },
+        _count: { _all: true },
       }),
     ]);
 
@@ -64,16 +73,20 @@ export const userService = {
       select: { importe: true, comision: true, app: { select: { moneda: true } } },
     });
 
-    const totalPagadoARS = registros
-      .filter((r) => r.app?.moneda === 'ARS')
-      .reduce((s, r) => s + Number(r.importe) + Number(r.comision), 0);
-    const totalPagadoUSD = registros
-      .filter((r) => r.app?.moneda === 'USD')
-      .reduce((s, r) => s + Number(r.importe) + Number(r.comision), 0);
+    const totalPagadoARS = registros.filter((r) => r.app?.moneda === 'ARS').reduce((s, r) => s + Number(r.importe) + Number(r.comision), 0);
+    const totalPagadoUSD = registros.filter((r) => r.app?.moneda === 'USD').reduce((s, r) => s + Number(r.importe) + Number(r.comision), 0);
     const totalOfertadoARS = pujos.filter((b) => b.app?.moneda === 'ARS').reduce((s, b) => s + Number(b.importe), 0);
     const totalOfertadoUSD = pujos.filter((b) => b.app?.moneda === 'USD').reduce((s, b) => s + Number(b.importe), 0);
+    const totalPujos = pujos.length;
 
-    return { totalParticipaciones: participaciones, totalVictorias: victorias, totalPagadoARS, totalPagadoUSD, totalOfertadoARS, totalOfertadoUSD };
+    const catCount: Record<string, number> = {};
+    for (const p of pujos) {
+      const cat = p.asistente?.subasta?.categoria ?? 'comun';
+      catCount[cat] = (catCount[cat] ?? 0) + 1;
+    }
+    const pujosPorCategoria = Object.entries(catCount).map(([categoria, cantidad]) => ({ categoria, cantidad }));
+
+    return { totalParticipaciones: participaciones, totalVictorias: victorias, totalPujos, totalPagadoARS, totalPagadoUSD, totalOfertadoARS, totalOfertadoUSD, pujosPorCategoria };
   },
 
   async getAuctionHistory(personaId: number, req: Request) {
@@ -151,5 +164,83 @@ export const userService = {
       return prod;
     });
     return { products };
+  },
+
+  /** Pólizas de las que el usuario es beneficiario (dueño). Una póliza por dueño,
+   *  combinada si cubre varias piezas. Incluye el premio estimado (ver PREMIO_RATE) y
+   *  la solicitud de aumento pendiente, si existe. */
+  async getInsurances(personaId: number) {
+    const polizas = await prisma.seguroApp.findMany({
+      where: { duenioId: personaId },
+      include: {
+        seguro: {
+          include: {
+            productos: { include: { app: { select: { numeroPieza: true, status: true, moneda: true } } } },
+            aumentos: { where: { estado: 'pendiente' }, orderBy: { createdAt: 'desc' }, take: 1 },
+          },
+        },
+      },
+      orderBy: { nroPoliza: 'asc' },
+    });
+    const seguros = polizas.map((pa) => {
+      const importe = Number(pa.seguro.importe);
+      const pend = pa.seguro.aumentos[0];
+      return {
+        nroPoliza: pa.seguro.nroPoliza,
+        compania: pa.seguro.compania,
+        importe,
+        polizaCombinada: fromSiNo(pa.seguro.polizaCombinada),
+        premioEstimado: Math.round(importe * PREMIO_RATE),
+        solicitudPendiente: pend
+          ? {
+              id: pend.id,
+              valorSolicitado: Number(pend.valorSolicitado),
+              diferenciaPremio: Number(pend.diferenciaPremio),
+              createdAt: pend.createdAt,
+            }
+          : null,
+        productos: pa.seguro.productos.map((p) => ({
+          identificador: p.identificador,
+          descripcionCompleta: p.descripcionCompleta,
+          numeroPieza: p.app?.numeroPieza ?? null,
+          status: p.app?.status ?? null,
+          moneda: p.app?.moneda ?? null,
+        })),
+      };
+    });
+    return { seguros };
+  },
+
+  /** El dueño SOLICITA aumentar el valor asegurado de su póliza. NO cambia el importe:
+   *  crea una solicitud que la empresa (admin) debe aprobar. (Consigna: "ponerse en
+   *  contacto con la compañía... y aumentar el valor de la póliza pagando la diferencia
+   *  del premio"). */
+  async requestInsuranceIncrease(personaId: number, nroPoliza: string, nuevoValor: number) {
+    if (!Number.isFinite(nuevoValor) || nuevoValor <= 0) {
+      throw { status: 400, message: 'El nuevo valor asegurado es inválido' };
+    }
+    const pa = await prisma.seguroApp.findUnique({ where: { nroPoliza }, include: { seguro: true } });
+    if (!pa) throw { status: 404, message: 'Póliza no encontrada' };
+    if (pa.duenioId !== personaId) throw { status: 403, message: 'No sos el beneficiario de esta póliza' };
+
+    const valorActual = Number(pa.seguro.importe);
+    if (nuevoValor <= valorActual) {
+      throw { status: 400, message: `El nuevo valor debe ser mayor al actual (${valorActual}).` };
+    }
+    const yaPendiente = await prisma.seguroAumentoSolicitud.findFirst({ where: { nroPoliza, estado: 'pendiente' } });
+    if (yaPendiente) throw { status: 409, message: 'Ya tenés una solicitud pendiente para esta póliza.' };
+
+    const diferenciaPremio = Math.round((nuevoValor - valorActual) * PREMIO_RATE);
+    const solicitud = await prisma.seguroAumentoSolicitud.create({
+      data: { nroPoliza, duenioId: personaId, valorActual, valorSolicitado: nuevoValor, diferenciaPremio, estado: 'pendiente' },
+    });
+    return {
+      id: solicitud.id,
+      nroPoliza,
+      valorActual,
+      valorSolicitado: nuevoValor,
+      diferenciaPremio,
+      estado: solicitud.estado,
+    };
   },
 };

@@ -19,6 +19,8 @@ router.get('/:id/auction-history', userController.getAuctionHistory);
 router.get('/:id/my-auctions', userController.getMyAuctions);
 router.get('/:id/purchases', userController.getPurchases);
 router.get('/:id/products', userController.getProducts);
+router.get('/:id/insurances', userController.getInsurances);
+router.post('/:id/insurances/:nroPoliza/increase-request', userController.requestInsuranceIncrease);
 router.get('/:id/submissions', submissionController.listMine);
 
 // Payment methods nested under user

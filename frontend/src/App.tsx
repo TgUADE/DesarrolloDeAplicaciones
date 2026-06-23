@@ -9,6 +9,7 @@ import Duenios from './pages/Duenios';
 import Auctions from './pages/Auctions';
 import Auctioneers from './pages/Auctioneers';
 import Purchases from './pages/Purchases';
+import Seguros from './pages/Seguros';
 import ProfileRequests from './pages/ProfileRequests';
 import { getStoredUser, getUsers, getSubmissions, getPaymentMethods, getProfileChangeRequests } from './api';
 
@@ -62,6 +63,7 @@ export default function App() {
         <Route path="auctions" element={<Auctions />} />
         <Route path="auctioneers" element={<Auctioneers />} />
         <Route path="purchases" element={<Purchases />} />
+        <Route path="seguros" element={<Seguros />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

@@ -41,6 +41,9 @@ const FOTOS_POR_PIEZA: Record<string, string[]> = {
   'A4-002': [IMG.wineWhisky, IMG.wineChampagne, IMG.wineRed, IMG.wineWhisky, IMG.wineChampagne, IMG.wineRed],
   'A4-003': [IMG.wineChampagne, IMG.wineRed, IMG.wineWhisky, IMG.wineChampagne, IMG.wineRed, IMG.wineWhisky],
   'A5-001': [IMG.artEngraving, IMG.artOil, IMG.artSculpture, IMG.artWatercolor, IMG.artEngraving2, IMG.artWatercolor2],
+  'B1-001': [IMG.artEngraving, IMG.artEngraving2, IMG.artOil, IMG.artWatercolor, IMG.artSculpture, IMG.artWatercolor2],
+  'B1-002': [IMG.artWatercolor2, IMG.artEngraving, IMG.artEngraving2, IMG.artOil, IMG.artWatercolor, IMG.artSculpture],
+  'B1-003': [IMG.artSculpture, IMG.artEngraving2, IMG.artWatercolor2, IMG.artEngraving, IMG.artOil, IMG.artWatercolor],
 };
 // Fallback temático si aparece una pieza sin mapear.
 const FOTOS_FALLBACK = [IMG.artOil, IMG.antiqueClock, IMG.jewelWatch, IMG.wineRed, IMG.artSculpture, IMG.antiqueMirror];
@@ -85,13 +88,26 @@ async function resetSequences() {
   }
 }
 
-/** Seguro por pieza (consigna: a cada bien recibido se le contrata un seguro según el valor base). */
-async function crearSeguro(productoId: number, base: number) {
-  const nroPoliza = `POL-${productoId}`;
-  await prisma.seguro.upsert({
+/** Seguro por dueño: todos los productos del mismo dueño comparten una póliza combinada. */
+async function crearSeguro(productoId: number, base: number, duenioId: number) {
+  const nroPoliza = `POL-DUENIO-${duenioId}`;
+  const importeNuevo = Math.max(1, Math.round(base));
+  const existing = await prisma.seguro.findUnique({ where: { nroPoliza } });
+  if (existing) {
+    await prisma.seguro.update({
+      where: { nroPoliza },
+      data: { importe: Number(existing.importe) + importeNuevo, polizaCombinada: 'si' },
+    });
+  } else {
+    await prisma.seguro.create({
+      data: { nroPoliza, compania: 'La Subastadora Seguros S.A.', importe: importeNuevo, polizaCombinada: 'no' },
+    });
+  }
+  // Vincula la póliza a su dueño (tabla de extensión seguros_app).
+  await prisma.seguroApp.upsert({
     where: { nroPoliza },
-    create: { nroPoliza, compania: 'La Subastadora Seguros S.A.', importe: Math.max(1, Math.round(base)), polizaCombinada: 'no' },
-    update: { importe: Math.max(1, Math.round(base)) },
+    create: { nroPoliza, duenioId },
+    update: { duenioId },
   });
   await prisma.producto.update({ where: { identificador: productoId }, data: { nroPoliza } });
 }
@@ -189,7 +205,7 @@ async function seedAuction(args: {
         },
       });
       productoId = producto.identificador;
-      await crearSeguro(productoId, pd.precioBase);
+      await crearSeguro(productoId, pd.precioBase, args.duenioId);
     }
 
     let item = await prisma.itemCatalogo.findFirst({ where: { catalogoId, productoId } });
@@ -320,15 +336,24 @@ async function main() {
   const sub3Id = await seedSubastador('rematador3@subastas.com', 'Diego', 'Martínez', '20777777778', 'MAT-003', 'Córdoba');
 
   // ── Dueño (con verificación financiera/judicial y calificación de riesgo) ──────
-  const duenioId = await upsertPersona('duenio@demo.com', { nombre: 'María', direccion: 'Calle Falsa 123, CABA', documento: '26666666663' }, { apellido: 'López', registrationStatus: 'aprobado', paisOrigen: 'Argentina' });
+  const duenioId = await upsertPersona('duenio@demo.com', { nombre: 'María', direccion: 'Calle Falsa 123, CABA', documento: '26666666663' }, { apellido: 'López', passwordHash: userHash, registrationStatus: 'aprobado', paisOrigen: 'Argentina' });
   await prisma.duenio.upsert({
     where: { identificador: duenioId },
     create: { identificador: duenioId, verificadorId, numeroPais: 32, verificacionFinanciera: 'si', verificacionJudicial: 'si', calificacionRiesgo: 2 },
     update: { verificadorId, numeroPais: 32, verificacionFinanciera: 'si', verificacionJudicial: 'si', calificacionRiesgo: 2 },
   });
-  console.log(`✅ Usuarios (admin, demo=${demoId}, sofia, martin, empresa=${empresaId}, subastadores=${subId}/${sub2Id}/${sub3Id}, dueño=${duenioId})`);
+
+  // ── Segundo dueño (para verificar póliza por dueño) ───────────────────────────
+  const duenio2Id = await upsertPersona('duenio2@demo.com', { nombre: 'Roberto', direccion: 'Libertad 456, Rosario', documento: '28777777779' }, { apellido: 'Garmendia', passwordHash: userHash, registrationStatus: 'aprobado', paisOrigen: 'Argentina' });
+  await prisma.duenio.upsert({
+    where: { identificador: duenio2Id },
+    create: { identificador: duenio2Id, verificadorId, numeroPais: 32, verificacionFinanciera: 'si', verificacionJudicial: 'no', calificacionRiesgo: 3 },
+    update: { verificadorId, numeroPais: 32, verificacionFinanciera: 'si', verificacionJudicial: 'no', calificacionRiesgo: 3 },
+  });
+  console.log(`✅ Usuarios (admin, demo=${demoId}, sofia, martin, empresa=${empresaId}, subastadores=${subId}/${sub2Id}/${sub3Id}, dueño=${duenioId}, dueño2=${duenio2Id})`);
 
   const common = { subastadorId: subId, duenioId, revisorId, responsableId };
+  const common2 = { subastadorId: subId, duenioId: duenio2Id, revisorId, responsableId };
 
   // ── Subasta EN VIVO ────────────────────────────────────────────────────────────
   await seedAuction({
@@ -412,12 +437,26 @@ async function main() {
     console.log('✅ Venta cerrada de ejemplo (compra del usuario demo, pendiente de pago)');
   }
 
+  // ── Subasta del segundo dueño (para verificar POL-DUENIO separada) ────────────
+  await seedAuction({
+    ...common2, id: 6, titulo: 'Fotografía y Arte Digital', descripcion: 'Obras de fotografía artística y prints de edición limitada.',
+    fechaHora: new Date(Date.now() + 15 * DAY), ubicacion: 'CCR, Alicia Moreau de Justo 1930, CABA', categoria: 'comun', estado: 'programada',
+    tieneDeposito: 'no', seguridadPropia: 'no', capacidadAsistentes: 50,
+    productos: [
+      { numeroPieza: 'B1-001', descripcionCompleta: 'Fotografía analógica enmarcada - Calles de Buenos Aires', precioBase: 25000, esObraDeArte: true, artista: 'L. Donadío', fechaObra: '1985', deposito: 'Depósito Sur', ubicacion: 'Rack F-01' },
+      { numeroPieza: 'B1-002', descripcionCompleta: 'Print digital firmado - Abstracción urbana', precioBase: 18000, esObraDeArte: true, artista: 'M. Quiroga', fechaObra: '2015', deposito: 'Depósito Sur', ubicacion: 'Rack F-02' },
+      { numeroPieza: 'B1-003', descripcionCompleta: 'Serigrafía sobre papel japonés - Serie Río', precioBase: 32000, esObraDeArte: true, artista: 'P. Suárez', fechaObra: '2003', deposito: 'Depósito Sur', ubicacion: 'Rack F-03' },
+    ],
+  });
+
   await resetSequences();
 
   console.log('\n🎉 Seed completado!');
   console.log('\nCredenciales:');
   console.log('  Admin:    admin@subastas.com / admin123');
   console.log('  Usuario:  usuario@demo.com / user123  (categoría oro)');
+  console.log('  Dueño 1:  duenio@demo.com / user123  (María López · POL-DUENIO-12)');
+  console.log('  Dueño 2:  duenio2@demo.com / user123 (Roberto Garmendia · POL-DUENIO-13)');
 }
 
 main()

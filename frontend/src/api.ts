@@ -276,6 +276,7 @@ export async function closeAuctionItem(auctionId: string, itemId: number): Promi
 // Productos disponibles (aceptados, sin asignar a una subasta) para sumar a un catálogo
 export interface AdminProducto {
   identificador: number;
+  duenioId?: number;
   descripcionCompleta?: string;
   numeroPieza?: string;
   status?: string;
@@ -406,6 +407,82 @@ export async function markPurchasePaid(id: number): Promise<Purchase> {
 
 export async function applyFine(id: number): Promise<Purchase> {
   return req(`/admin/purchases/${id}/fine`, { method: 'PATCH' });
+}
+
+// Seguros (pólizas)
+export interface SeguroProducto {
+  identificador: number;
+  duenioId: number;
+  descripcionCompleta: string;
+  numeroPieza: string | null;
+  status: string | null;
+  moneda: string | null;
+  duenio: { nombre: string; apellido: string } | null;
+}
+
+export interface AdminSeguro {
+  nroPoliza: string;
+  compania: string;
+  importe: number;
+  polizaCombinada: boolean;
+  duenioId: number | null;
+  duenio: { id: number; nombre: string; apellido: string } | null;
+  productos: SeguroProducto[];
+}
+
+export async function getSeguros(): Promise<{ seguros: AdminSeguro[] }> {
+  return req('/admin/seguros');
+}
+
+export async function createSeguro(data: { nroPoliza: string; compania: string; importe: number; polizaCombinada?: boolean }): Promise<AdminSeguro> {
+  return req('/admin/seguros', { method: 'POST', body: JSON.stringify(data) });
+}
+
+export async function updateSeguro(nroPoliza: string, data: { compania?: string; importe?: number; polizaCombinada?: boolean }): Promise<AdminSeguro> {
+  return req(`/admin/seguros/${encodeURIComponent(nroPoliza)}`, { method: 'PATCH', body: JSON.stringify(data) });
+}
+
+export async function deleteSeguro(nroPoliza: string): Promise<unknown> {
+  return req(`/admin/seguros/${encodeURIComponent(nroPoliza)}`, { method: 'DELETE' });
+}
+
+export async function assignProductToPolicy(nroPoliza: string, productoId: number): Promise<unknown> {
+  return req(`/admin/seguros/${encodeURIComponent(nroPoliza)}/productos/${productoId}`, { method: 'PATCH' });
+}
+
+export async function unassignProductFromPolicy(nroPoliza: string, productoId: number): Promise<unknown> {
+  return req(`/admin/seguros/${encodeURIComponent(nroPoliza)}/productos/${productoId}`, { method: 'DELETE' });
+}
+
+export async function getAllItems(): Promise<{ items: AdminProducto[] }> {
+  return req('/admin/items');
+}
+
+// Solicitudes de aumento del valor asegurado (las inician los dueños desde la app)
+export interface SeguroAumento {
+  id: string;
+  nroPoliza: string;
+  valorActual: number;
+  valorSolicitado: number;
+  diferenciaPremio: number;
+  estado: string; // pendiente | aprobada | rechazada
+  motivoRechazo: string | null;
+  createdAt: string;
+  resueltaAt: string | null;
+  duenio: { nombre: string; apellido: string } | null;
+}
+
+export async function getSeguroRequests(estado?: string): Promise<{ solicitudes: SeguroAumento[] }> {
+  const qs = estado ? `?estado=${encodeURIComponent(estado)}` : '';
+  return req(`/admin/seguros/aumentos${qs}`);
+}
+
+export async function approveSeguroRequest(id: string): Promise<unknown> {
+  return req(`/admin/seguros/aumentos/${id}/approve`, { method: 'PATCH' });
+}
+
+export async function rejectSeguroRequest(id: string, motivoRechazo?: string): Promise<unknown> {
+  return req(`/admin/seguros/aumentos/${id}/reject`, { method: 'PATCH', body: JSON.stringify({ motivoRechazo }) });
 }
 
 // Workflow de envío de la compra (luego del pago).

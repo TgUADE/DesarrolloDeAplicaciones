@@ -61,7 +61,7 @@ async function materializeProducto(sub: SubWithImages, base: number) {
       },
     },
   });
-  if (base > 0.01) await ensureSeguro(producto.identificador, base);
+  if (base > 0.01) await ensureSeguro(producto.identificador, base, sub.personaId);
 }
 
 export const submissionService = {

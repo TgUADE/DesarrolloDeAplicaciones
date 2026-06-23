@@ -413,7 +413,12 @@ export default function Vender() {
         {/* Mis piezas (dueño): depósito + póliza */}
         {products.length > 0 ? (
           <>
-            <Text style={[styles.section, { marginTop: space.lg }]}>Mis piezas entregadas</Text>
+            <View style={[styles.rowBetween, { marginTop: space.lg, marginBottom: space.sm }]}>
+              <Text style={[styles.section, { marginTop: 0, marginBottom: 0 }]}>Mis piezas entregadas</Text>
+              <Pressable onPress={() => router.push('/seguros')} hitSlop={8}>
+                <Text style={styles.linkText}>Ver mis seguros ›</Text>
+              </Pressable>
+            </View>
             {products.map((p) => (
               <View key={p.identificador} style={styles.subCard}>
                 <View style={styles.rowBetween}>
@@ -494,6 +499,7 @@ const styles = StyleSheet.create({
   submitText: { color: '#fff', fontSize: FontSize.base, fontWeight: FontWeight.bold },
   dim: { opacity: 0.6 },
   section: { fontSize: FontSize.base, fontWeight: FontWeight.medium, color: Brand.text, marginTop: space.lg, marginBottom: space.sm },
+  linkText: { fontSize: FontSize.sm, color: Brand.primary, fontWeight: FontWeight.medium },
   empty: { fontSize: FontSize.sm, color: Brand.textMuted },
   subCard: { backgroundColor: Brand.surface, borderWidth: 1, borderColor: Brand.border, borderRadius: Radius.md, padding: space.md, marginBottom: space.sm, gap: 4 },
   rowBetween: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: space.sm },

@@ -18,6 +18,7 @@ const NAV = [
   { path: '/auctions', icon: '🔨', label: 'Subastas' },
   { path: '/auctioneers', icon: '🎙️', label: 'Subastadores' },
   { path: '/purchases', icon: '💰', label: 'Compras' },
+  { path: '/seguros', icon: '🛡️', label: 'Seguros' },
 ];
 
 export default function Layout({ onLogout, pendingUsers, pendingSubmissions, pendingPayments, pendingProfileRequests }: Props) {
