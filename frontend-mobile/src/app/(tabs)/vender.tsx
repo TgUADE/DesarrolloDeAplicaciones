@@ -10,10 +10,13 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getStoredUser, isGuestSession } from '@/api/auth';
 import { listPaymentMethods, type PaymentMethod } from '@/api/payment-methods';
 import {
-  acceptSubmissionPrice,
+  acceptAppraisal,
+  acceptOffer,
   createSubmission,
   listMySubmissions,
-  rejectSubmissionPrice,
+  markShipped,
+  rejectAppraisal,
+  rejectOffer,
   type MySubmission,
 } from '@/api/submissions';
 import { listMyProducts, type MyProduct } from '@/api/users';
@@ -24,12 +27,29 @@ import { formatMoney } from '@/utils/format';
 
 const STATUS_META: Record<string, { label: string; color: string }> = {
   pendiente_empresa: { label: 'En revisión', color: Brand.warning },
-  interesada: { label: 'Empresa interesada', color: Brand.primary },
-  precio_propuesto: { label: 'Precio propuesto', color: Brand.accent },
-  aceptada_usuario: { label: 'Aceptada · en subasta', color: Brand.success },
+  oferta_inicial: { label: 'Oferta recibida', color: Brand.accent },
+  por_enviar: { label: 'Aceptada · a enviar', color: Brand.primary },
+  enviado: { label: 'Enviado', color: Brand.primary },
+  recibido: { label: 'Recibido · en tasación', color: Brand.primary },
+  tasacion_final: { label: 'Tasación recibida', color: Brand.accent },
+  aceptada_usuario: { label: 'Aceptada · en espera', color: Brand.success },
   rechazada_empresa: { label: 'Rechazada por la empresa', color: Brand.danger },
-  rechazada_usuario: { label: 'Rechazaste el precio', color: Brand.textMuted },
+  rechazada_usuario: { label: 'Rechazaste la oferta', color: Brand.textMuted },
+  rechazada_final: { label: 'Rechazaste la tasación', color: Brand.textMuted },
 };
+
+// Para una solicitud ACEPTADA, el badge depende del estado real de la pieza:
+// en espera (todavía no asignada) → en subasta / programada → vendida.
+function aceptadaMeta(s: MySubmission): { label: string; color: string } {
+  if (s.productoStatus === 'vendido') return { label: 'Vendida', color: Brand.textMuted };
+  if (s.productoStatus === 'en_subasta') {
+    if (s.subastaEstado === 'abierta') return { label: 'En subasta (en vivo)', color: Brand.danger };
+    if (s.subastaEstado === 'programada') return { label: 'En subasta programada', color: Brand.warning };
+    if (s.subastaEstado === 'cerrada' || s.subastaEstado === 'finalizada') return { label: 'Subasta finalizada', color: Brand.textMuted };
+    return { label: 'En subasta', color: Brand.primary };
+  }
+  return { label: 'Aceptada · en espera', color: Brand.success };
+}
 
 const MIN_FOTOS = 6;
 
@@ -50,10 +70,8 @@ export default function Vender() {
   const [artista, setArtista] = useState('');
   const [fechaEpoca, setFechaEpoca] = useState('');
   const [historia, setHistoria] = useState('');
-  const [precio, setPrecio] = useState('');
   const [moneda, setMoneda] = useState<'ARS' | 'USD'>('ARS');
   const [selectedPmId, setSelectedPmId] = useState<string | null>(null);
-  const [cuentaManual, setCuentaManual] = useState('');
   const [declaracion, setDeclaracion] = useState(false);
   const [origen, setOrigen] = useState(false);
   const [images, setImages] = useState<string[]>([]); // base64
@@ -66,7 +84,9 @@ export default function Vender() {
   const [products, setProducts] = useState<MyProduct[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const bankAccounts = pms.filter((p) => p.tipo.startsWith('cuenta_bancaria'));
+  const allBankAccounts = pms.filter((p) => p.tipo.startsWith('cuenta_bancaria'));
+  // Como cuenta destino de cobro solo se pueden usar cuentas bancarias VALIDADAS (aprobadas).
+  const approvedAccounts = allBankAccounts.filter((p) => p.estado === 'aprobada');
 
   const load = useCallback(async (uid: string) => {
     setLoading(true);
@@ -125,15 +145,11 @@ export default function Vender() {
     setSelectedPmId(pm.id);
     // Las cuentas bancarias son siempre de una sola moneda (ARS o USD).
     setMoneda(pm.moneda === 'USD' ? 'USD' : 'ARS');
-    setCuentaManual('');
   };
 
   const resolveCuenta = (): string => {
-    if (selectedPmId) {
-      const pm = bankAccounts.find((p) => p.id === selectedPmId);
-      if (pm) return accountLabel(pm);
-    }
-    return cuentaManual.trim();
+    const pm = approvedAccounts.find((p) => p.id === selectedPmId);
+    return pm ? accountLabel(pm) : '';
   };
 
   const submit = async () => {
@@ -141,8 +157,7 @@ export default function Vender() {
     const cuenta = resolveCuenta();
     if (nombre.trim().length < 3) return setError('Ingresá el nombre del artículo.');
     if (descripcion.trim().length < 5) return setError('Describí la pieza (mínimo 5 caracteres).');
-    if (!cuenta) return setError('Indicá la cuenta destino para el cobro.');
-    if (!precio || Number(precio) <= 0) return setError(`Indicá el monto que pedís (en ${moneda}).`);
+    if (!cuenta) return setError('Elegí una cuenta bancaria validada como destino del cobro.');
     if (!declaracion) return setError('Debés declarar que el bien te pertenece.');
     if (!origen) return setError('Debés declarar el origen lícito del bien.');
     if (images.length < MIN_FOTOS) return setError(`Subí al menos ${MIN_FOTOS} fotos (tenés ${images.length}).`);
@@ -155,7 +170,6 @@ export default function Vender() {
         artista: artista.trim() || undefined,
         fechaEpoca: fechaEpoca.trim() || undefined,
         datosHistoricos: historia.trim() || undefined,
-        precioSugerido: Number(precio),
         moneda,
         cuentaCobro: cuenta,
         declaracionPropiedad: declaracion,
@@ -167,13 +181,11 @@ export default function Vender() {
       setArtista('');
       setFechaEpoca('');
       setHistoria('');
-      setPrecio('');
       setSelectedPmId(null);
-      setCuentaManual('');
       setDeclaracion(false);
       setOrigen(false);
       setImages([]);
-      Alert.alert('¡Listo!', 'Tu solicitud fue enviada. La empresa la revisará.');
+      Alert.alert('¡Listo!', 'Tu solicitud fue enviada. La empresa la va a revisar y te va a ofrecer un valor.');
       if (userId) load(userId);
     } catch (err) {
       setError(getApiErrorMessage(err, 'No se pudo enviar la solicitud.'));
@@ -182,21 +194,21 @@ export default function Vender() {
     }
   };
 
-  const onAccept = async (s: MySubmission) => {
+  // Ejecuta una acción de la solicitud y recarga la lista.
+  const act = async (fn: (id: string) => Promise<void>, id: string) => {
     try {
-      await acceptSubmissionPrice(s.id);
+      await fn(id);
       if (userId) load(userId);
     } catch (err) {
-      Alert.alert('Error', getApiErrorMessage(err, 'No se pudo aceptar.'));
+      Alert.alert('Error', getApiErrorMessage(err, 'No se pudo completar la acción.'));
     }
   };
-  const onReject = async (s: MySubmission) => {
-    try {
-      await rejectSubmissionPrice(s.id);
-      if (userId) load(userId);
-    } catch (err) {
-      Alert.alert('Error', getApiErrorMessage(err, 'No se pudo rechazar.'));
-    }
+
+  const onShipped = (s: MySubmission) => {
+    Alert.alert('Confirmar envío', '¿Confirmás que ya enviaste el ítem a la dirección indicada? La empresa lo va a inspeccionar al recibirlo.', [
+      { text: 'Cancelar', style: 'cancel' },
+      { text: 'Sí, lo envié', onPress: () => act(markShipped, s.id) },
+    ]);
   };
 
   if (isGuest || !userId) {
@@ -257,11 +269,12 @@ export default function Vender() {
             </ScrollView>
           ) : null}
 
-          {/* Cuenta destino para cobro */}
+          {/* Cuenta destino para cobro: solo cuentas bancarias validadas */}
           <Text style={[styles.label, { marginTop: space.sm }]}>Cuenta destino para cobro</Text>
-          {bankAccounts.length > 0 ? (
+          <Text style={styles.hint}>Solo se pueden usar cuentas bancarias validadas por la empresa.</Text>
+          {approvedAccounts.length > 0 ? (
             <View style={styles.accountList}>
-              {bankAccounts.map((pm) => {
+              {approvedAccounts.map((pm) => {
                 const sel = selectedPmId === pm.id;
                 return (
                   <Pressable key={pm.id} onPress={() => selectAccount(pm)} style={[styles.account, sel && styles.accountSel]}>
@@ -271,43 +284,24 @@ export default function Vender() {
                   </Pressable>
                 );
               })}
-              <Pressable onPress={() => router.push('/add-payment-method?return=list')} style={styles.addAccount}>
-                <Ionicons name="add" size={16} color={Brand.primary} />
-                <Text style={styles.addAccountText}>Agregar otra cuenta</Text>
+              <Pressable onPress={() => router.push('/payment-methods')} style={styles.addAccount}>
+                <Ionicons name="card-outline" size={16} color={Brand.primary} />
+                <Text style={styles.addAccountText}>Gestionar cuentas</Text>
               </Pressable>
             </View>
           ) : (
             <View style={styles.noAccount}>
-              <Text style={styles.noAccountText}>No tenés cuentas bancarias cargadas. Podés agregar una o ingresarla manualmente.</Text>
-              <Pressable onPress={() => router.push('/add-payment-method?return=list')} style={styles.addAccount}>
-                <Ionicons name="add" size={16} color={Brand.primary} />
-                <Text style={styles.addAccountText}>Agregar medio de pago</Text>
+              <Text style={styles.noAccountText}>
+                {allBankAccounts.length > 0
+                  ? 'Tus cuentas bancarias todavía no fueron validadas por la empresa. Vas a poder elegirlas para el cobro cuando las aprueben.'
+                  : 'No tenés cuentas bancarias validadas. Agregá una cuenta bancaria y esperá la aprobación de la empresa para poder cobrar.'}
+              </Text>
+              <Pressable onPress={() => router.push('/payment-methods')} style={styles.addAccount}>
+                <Ionicons name="card-outline" size={16} color={Brand.primary} />
+                <Text style={styles.addAccountText}>Gestionar medios de pago</Text>
               </Pressable>
-              <View style={styles.segment}>
-                {(['ARS', 'USD'] as const).map((m) => (
-                  <Pressable key={m} onPress={() => setMoneda(m)} style={[styles.segmentOpt, moneda === m && styles.segmentOptSel]}>
-                    <Text style={[styles.segmentText, moneda === m && styles.segmentTextSel]}>{m}</Text>
-                  </Pressable>
-                ))}
-              </View>
-              <TextInput style={styles.inputLine} value={cuentaManual} onChangeText={setCuentaManual} placeholder="CBU / IBAN / alias" placeholderTextColor={Brand.placeholder} autoCapitalize="none" />
             </View>
           )}
-
-          {/* Precio en la moneda de la cuenta */}
-          <Text style={[styles.label, { marginTop: space.sm }]}>Monto que pedís ({moneda})</Text>
-          <View style={styles.precioRow}>
-            <Text style={styles.precioCur}>{moneda === 'USD' ? 'US$' : '$'}</Text>
-            <TextInput
-              style={styles.precioInput}
-              value={precio}
-              onChangeText={(t) => setPrecio(t.replace(/[^0-9]/g, ''))}
-              placeholder="0"
-              placeholderTextColor={Brand.placeholder}
-              keyboardType="number-pad"
-            />
-          </View>
-          <Text style={styles.hint}>El monto se cobra en la moneda de la cuenta destino seleccionada.</Text>
 
           {/* Declaraciones */}
           <Pressable style={styles.check} onPress={() => setDeclaracion((v) => !v)}>
@@ -334,7 +328,7 @@ export default function Vender() {
           <Text style={styles.empty}>Todavía no enviaste solicitudes.</Text>
         ) : (
           subs.map((s) => {
-            const meta = STATUS_META[s.status] ?? { label: s.status, color: Brand.textMuted };
+            const meta = s.status === 'aceptada_usuario' ? aceptadaMeta(s) : (STATUS_META[s.status] ?? { label: s.status, color: Brand.textMuted });
             const cur = (s.moneda as 'ARS' | 'USD') ?? 'ARS';
             return (
               <View key={s.id} style={styles.subCard}>
@@ -342,25 +336,73 @@ export default function Vender() {
                   <Text style={styles.subDesc} numberOfLines={1}>{s.nombre || s.descripcion}</Text>
                   <Badge label={meta.label} color={meta.color} />
                 </View>
-                <Text style={styles.subMeta}>
-                  Pedías: {formatMoney(Number(s.precioSugerido ?? 0), cur)}
-                  {s.precioBaseOfrecido != null ? ` · Aceptada en ${formatMoney(Number(s.precioBaseOfrecido), cur)}` : ''}
-                </Text>
-                {s.status === 'precio_propuesto' ? (
+                {s.status === 'pendiente_empresa' ? (
+                  <Text style={styles.subMeta}>La empresa está revisando tu solicitud. Te va a ofrecer un valor.</Text>
+                ) : null}
+
+                {s.status === 'oferta_inicial' ? (
                   <>
-                    <Text style={styles.subMeta}>Precio base ofrecido: {formatMoney(Number(s.precioBaseOfrecido ?? 0), cur)}</Text>
-                    {s.comisionesInfo ? <Text style={styles.subMeta}>{s.comisionesInfo}</Text> : null}
+                    <Text style={styles.subMeta}>La empresa te ofrece <Text style={styles.strong}>{formatMoney(Number(s.valorOfrecido ?? 0), cur)}</Text>. Si aceptás, vas a tener que enviar la pieza para su inspección.</Text>
                     <View style={styles.actionRow}>
-                      <Pressable style={[styles.actionBtn, { backgroundColor: Brand.success }]} onPress={() => onAccept(s)}>
-                        <Text style={styles.actionText}>Aceptar</Text>
+                      <Pressable style={[styles.actionBtn, { backgroundColor: Brand.success }]} onPress={() => act(acceptOffer, s.id)}>
+                        <Text style={styles.actionText}>Aceptar oferta</Text>
                       </Pressable>
-                      <Pressable style={[styles.actionBtn, { backgroundColor: Brand.danger }]} onPress={() => onReject(s)}>
+                      <Pressable style={[styles.actionBtn, { backgroundColor: Brand.danger }]} onPress={() => act(rejectOffer, s.id)}>
                         <Text style={styles.actionText}>Rechazar</Text>
                       </Pressable>
                     </View>
                   </>
                 ) : null}
-                {s.status === 'rechazada_empresa' && s.motivoRechazo ? (
+
+                {s.status === 'por_enviar' ? (
+                  <>
+                    <Text style={styles.subMeta}>Aceptaste la oferta de {formatMoney(Number(s.valorOfrecido ?? 0), cur)}. Enviá la pieza a:</Text>
+                    <View style={styles.addrBox}>
+                      <Ionicons name="location-outline" size={14} color={Brand.text} />
+                      <Text style={styles.addrText}>{s.direccionEnvio ?? 'Dirección a confirmar con la empresa'}</Text>
+                    </View>
+                    <Pressable style={styles.shipBtn} onPress={() => onShipped(s)}>
+                      <Ionicons name="cube-outline" size={16} color="#fff" />
+                      <Text style={styles.actionText}>Ítem enviado</Text>
+                    </Pressable>
+                  </>
+                ) : null}
+
+                {s.status === 'enviado' ? (
+                  <Text style={styles.subMeta}>Marcaste el ítem como enviado. Esperando que la empresa lo reciba e inspeccione.</Text>
+                ) : null}
+
+                {s.status === 'recibido' ? (
+                  <Text style={styles.subMeta}>La empresa recibió tu ítem y lo está tasando. Te va a llegar la tasación final.</Text>
+                ) : null}
+
+                {s.status === 'tasacion_final' ? (
+                  <>
+                    <Text style={styles.subMeta}>Tasación final — base: <Text style={styles.strong}>{formatMoney(Number(s.precioBaseOfrecido ?? 0), cur)}</Text> · comisión: <Text style={styles.strong}>{Number(s.comisionPorcentaje ?? 0)}%</Text></Text>
+                    {s.comisionesInfo ? <Text style={styles.subMeta}>{s.comisionesInfo}</Text> : null}
+                    <Text style={styles.subMetaItalic}>Si rechazás, se te devuelve el ítem con el envío a tu cargo.</Text>
+                    <View style={styles.actionRow}>
+                      <Pressable style={[styles.actionBtn, { backgroundColor: Brand.success }]} onPress={() => act(acceptAppraisal, s.id)}>
+                        <Text style={styles.actionText}>Aceptar</Text>
+                      </Pressable>
+                      <Pressable style={[styles.actionBtn, { backgroundColor: Brand.danger }]} onPress={() => act(rejectAppraisal, s.id)}>
+                        <Text style={styles.actionText}>Rechazar</Text>
+                      </Pressable>
+                    </View>
+                  </>
+                ) : null}
+
+                {s.status === 'aceptada_usuario' ? (
+                  <Text style={styles.subMeta}>
+                    {s.productoStatus === 'vendido'
+                      ? `Vendida en subasta (base ${formatMoney(Number(s.precioBaseOfrecido ?? 0), cur)}).`
+                      : s.productoStatus === 'en_subasta'
+                        ? `Tu pieza está ${s.subastaEstado === 'abierta' ? 'siendo subastada en vivo' : s.subastaEstado === 'programada' ? 'en una subasta programada' : 'en una subasta'} (base ${formatMoney(Number(s.precioBaseOfrecido ?? 0), cur)}). Si nadie oferta, la empresa la compra al precio base.`
+                        : `Aceptaste la tasación (base ${formatMoney(Number(s.precioBaseOfrecido ?? 0), cur)}). La empresa la va a incluir en una próxima subasta.`}
+                  </Text>
+                ) : null}
+
+                {(s.status === 'rechazada_empresa' || s.status === 'rechazada_final') && s.motivoRechazo ? (
                   <Text style={styles.subMeta}>Motivo: {s.motivoRechazo}</Text>
                 ) : null}
               </View>
@@ -467,4 +509,9 @@ const styles = StyleSheet.create({
   actionRow: { flexDirection: 'row', gap: space.sm, marginTop: space.sm },
   actionBtn: { flex: 1, borderRadius: Radius.sm, paddingVertical: 10, alignItems: 'center' },
   actionText: { color: '#fff', fontWeight: FontWeight.bold, fontSize: FontSize.sm },
+  strong: { fontWeight: FontWeight.bold, color: Brand.text },
+  subMetaItalic: { fontSize: FontSize.xs, color: Brand.textMuted, fontStyle: 'italic', marginTop: 2 },
+  addrBox: { flexDirection: 'row', gap: 6, alignItems: 'flex-start', backgroundColor: Brand.bg, borderRadius: Radius.sm, padding: space.sm, marginTop: 4 },
+  addrText: { flex: 1, fontSize: FontSize.xs, color: Brand.text, lineHeight: 17 },
+  shipBtn: { flexDirection: 'row', gap: 6, justifyContent: 'center', alignItems: 'center', backgroundColor: Brand.primary, borderRadius: Radius.sm, paddingVertical: 11, marginTop: space.sm },
 });

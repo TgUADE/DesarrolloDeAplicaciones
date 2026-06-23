@@ -94,6 +94,9 @@ export default function Catalogo() {
                   {items.length} {items.length === 1 ? 'pieza' : 'piezas'} ·{' '}
                   {formatDate(auction.fechaHora)} · {auction.moneda}
                 </Text>
+                {auction.rematador ? (
+                  <Text style={styles.meta}>Martillero: {auction.rematador.nombre} {auction.rematador.apellido}</Text>
+                ) : null}
               </View>
             ) : null}
 

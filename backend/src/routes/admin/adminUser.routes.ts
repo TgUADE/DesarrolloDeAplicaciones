@@ -11,5 +11,8 @@ router.patch('/users/:id/approve', adminUserController.approveRegistration);
 router.patch('/users/:id/category', adminUserController.setCategory);
 router.patch('/users/:id/status', adminUserController.setStatus);
 router.patch('/users/:id/payment-methods/:pmId/verify', adminUserController.verifyPaymentMethod);
+router.get('/profile-change-requests', adminUserController.listProfileChangeRequests);
+router.patch('/profile-change-requests/:id/approve', adminUserController.approveProfileChangeRequest);
+router.patch('/profile-change-requests/:id/reject', adminUserController.rejectProfileChangeRequest);
 
 export default router;

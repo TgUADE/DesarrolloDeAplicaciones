@@ -1,21 +1,32 @@
 import { useEffect, useState } from 'react';
-import { getSubmissions, acceptSubmission, rejectSubmission, imageUrl, type Submission } from '../api';
+import {
+  getSubmissions,
+  offerSubmission,
+  markSubmissionReceived,
+  appraiseSubmission,
+  rejectSubmission,
+  imageUrl,
+  type Submission,
+} from '../api';
 
 const STATUS_TABS = [
+  { value: 'pendiente_empresa', label: 'Por ofertar' },
+  { value: 'enviado', label: 'Por recibir' },
+  { value: 'recibido', label: 'Por tasar' },
   { value: '', label: 'Todas' },
-  { value: 'pendiente_empresa', label: 'Pendientes' },
-  { value: 'precio_propuesto', label: 'Contraoferta' },
-  { value: 'aceptada_usuario', label: 'Aceptadas' },
-  { value: 'rechazada_empresa', label: 'Rechazadas' },
 ];
 
 const STATUS_META: Record<string, { label: string; badge: string }> = {
-  pendiente_empresa: { label: 'Pendiente', badge: 'badge-yellow' },
-  interesada: { label: 'Interesada', badge: 'badge-blue' },
-  precio_propuesto: { label: 'Contraoferta', badge: 'badge-purple' },
-  aceptada_usuario: { label: 'Aceptada', badge: 'badge-green' },
-  rechazada_empresa: { label: 'Rechazada', badge: 'badge-red' },
-  rechazada_usuario: { label: 'Rechazada (usuario)', badge: 'badge-gray' },
+  pendiente_empresa: { label: 'En revisión', badge: 'badge-yellow' },
+  oferta_inicial: { label: 'Oferta enviada', badge: 'badge-purple' },
+  por_enviar: { label: 'Aceptó · a enviar', badge: 'badge-blue' },
+  enviado: { label: 'Enviado', badge: 'badge-blue' },
+  recibido: { label: 'Recibido · a tasar', badge: 'badge-purple' },
+  tasacion_final: { label: 'Tasación enviada', badge: 'badge-purple' },
+  aceptada_usuario: { label: 'Aceptada · disponible', badge: 'badge-green' },
+  rechazada_empresa: { label: 'Rechazada (empresa)', badge: 'badge-red' },
+  rechazada_usuario: { label: 'Rechazó la oferta', badge: 'badge-gray' },
+  rechazada_final: { label: 'Rechazó la tasación', badge: 'badge-gray' },
 };
 
 const money = (n?: number | string | null, moneda?: string | null) =>
@@ -27,6 +38,8 @@ interface Props {
   onCountChange: (n: number) => void;
 }
 
+type ActionType = 'offer' | 'appraisal' | 'reject' | null;
+
 export default function Submissions({ onCountChange }: Props) {
   const [items, setItems] = useState<Submission[]>([]);
   const [loading, setLoading] = useState(true);
@@ -34,8 +47,11 @@ export default function Submissions({ onCountChange }: Props) {
   const [error, setError] = useState('');
 
   const [selected, setSelected] = useState<Submission | null>(null);
-  const [action, setAction] = useState<'accept' | 'reject' | null>(null);
-  const [precio, setPrecio] = useState('');
+  const [action, setAction] = useState<ActionType>(null);
+  const [valor, setValor] = useState('');
+  const [direccion, setDireccion] = useState('');
+  const [base, setBase] = useState('');
+  const [comisionPct, setComisionPct] = useState('10');
   const [comisiones, setComisiones] = useState('');
   const [motivo, setMotivo] = useState('');
   const [saving, setSaving] = useState(false);
@@ -49,7 +65,12 @@ export default function Submissions({ onCountChange }: Props) {
     try {
       const data = await getSubmissions(filter || undefined);
       setItems(data.submissions);
-      if (filter === 'pendiente_empresa') onCountChange(data.submissions.length);
+      if (filter === 'pendiente_empresa') {
+        onCountChange(data.submissions.length);
+      } else {
+        const pend = await getSubmissions('pendiente_empresa');
+        onCountChange(pend.submissions.length);
+      }
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Error');
     } finally {
@@ -57,23 +78,42 @@ export default function Submissions({ onCountChange }: Props) {
     }
   };
 
-  const openAccept = (s: Submission) => {
-    setSelected(s);
-    setAction('accept');
-    setPrecio(s.precioSugerido != null ? String(s.precioSugerido) : '');
-    setComisiones('Comisión de venta: 5%');
+  const openOffer = (s: Submission) => {
+    setSelected(s); setAction('offer'); setValor(''); setDireccion('');
+  };
+  const openAppraisal = (s: Submission) => {
+    setSelected(s); setAction('appraisal');
+    setBase(s.valorOfrecido != null ? String(s.valorOfrecido) : '');
+    setComisionPct('10'); setComisiones('Comisión de venta');
   };
 
-  const handleAccept = async () => {
-    if (!selected || !precio) return;
+  const handleOffer = async () => {
+    if (!selected || !valor) return;
     setSaving(true);
     try {
-      await acceptSubmission(selected.id, parseFloat(precio), comisiones);
-      setAction(null); setSelected(null); setPrecio('');
+      await offerSubmission(selected.id, parseFloat(valor), direccion || undefined);
+      setAction(null); setSelected(null); setValor(''); setDireccion('');
       load();
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Error al aceptar');
-    } finally { setSaving(false); }
+    } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Error al ofrecer'); } finally { setSaving(false); }
+  };
+
+  const handleReceived = async (s: Submission) => {
+    setSaving(true);
+    try {
+      await markSubmissionReceived(s.id);
+      setSelected(null);
+      load();
+    } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Error'); } finally { setSaving(false); }
+  };
+
+  const handleAppraisal = async () => {
+    if (!selected || !base) return;
+    setSaving(true);
+    try {
+      await appraiseSubmission(selected.id, parseFloat(base), parseFloat(comisionPct || '0'), comisiones);
+      setAction(null); setSelected(null); setBase('');
+      load();
+    } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Error al tasar'); } finally { setSaving(false); }
   };
 
   const handleReject = async () => {
@@ -83,21 +123,21 @@ export default function Submissions({ onCountChange }: Props) {
       await rejectSubmission(selected.id, motivo);
       setAction(null); setSelected(null); setMotivo('');
       load();
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Error al rechazar');
-    } finally { setSaving(false); }
+    } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Error al rechazar'); } finally { setSaving(false); }
   };
 
-  const fmt = (d: string) => new Date(d).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  const fmt = (d?: string | null) => (d ? new Date(d).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '—');
   const meta = (st: string) => STATUS_META[st] ?? { label: st.replace(/_/g, ' '), badge: 'badge-gray' };
-  const canDecide = (st: string) => ['pendiente_empresa', 'interesada', 'precio_propuesto'].includes(st);
   const fotosCount = (s: Submission) => s._count?.images ?? s.images?.length ?? 0;
+  // Valuación a mostrar en la tabla según la etapa.
+  const valuacion = (s: Submission) =>
+    s.precioBaseOfrecido != null ? money(s.precioBaseOfrecido, s.moneda) : s.valorOfrecido != null ? money(s.valorOfrecido, s.moneda) : '—';
 
   return (
     <>
       <div className="page-header">
         <h1>Solicitudes de venta</h1>
-        <p>Artículos que usuarios quieren ingresar a subasta</p>
+        <p>Oferta inicial → envío → recepción → tasación final. El vendedor no fija precio.</p>
       </div>
 
       {error && <div className="error-banner">⚠️ {error}</div>}
@@ -120,7 +160,7 @@ export default function Submissions({ onCountChange }: Props) {
                 <tr>
                   <th>Pieza</th>
                   <th>Usuario</th>
-                  <th>Precio pedido</th>
+                  <th>Valuación</th>
                   <th>Estado</th>
                   <th>Fecha</th>
                   <th>Acciones</th>
@@ -153,11 +193,22 @@ export default function Submissions({ onCountChange }: Props) {
                             ? <><strong>{s.persona.nombre} {s.persona.apellido}</strong><br /><span style={{ color: '#94a3b8', fontSize: 11 }}>{s.persona.email}</span></>
                             : <span style={{ color: '#94a3b8' }}>—</span>}
                         </td>
-                        <td><strong>{money(s.precioSugerido, s.moneda)}</strong></td>
+                        <td><strong>{valuacion(s)}</strong></td>
                         <td><span className={`badge ${m.badge}`}>{m.label}</span></td>
                         <td style={{ color: '#64748b' }}>{fmt(s.createdAt)}</td>
                         <td>
-                          <button className="btn btn-sm btn-primary" onClick={() => { setSelected(s); setAction(null); }}>Ver</button>
+                          <div className="action-row">
+                            {s.status === 'pendiente_empresa' && (
+                              <button className="btn btn-sm btn-success" onClick={() => openOffer(s)}>Ofrecer valor</button>
+                            )}
+                            {s.status === 'enviado' && (
+                              <button className="btn btn-sm btn-success" disabled={saving} onClick={() => handleReceived(s)}>Marcar recibido</button>
+                            )}
+                            {s.status === 'recibido' && (
+                              <button className="btn btn-sm btn-success" onClick={() => openAppraisal(s)}>Tasación final</button>
+                            )}
+                            <button className="btn btn-sm btn-primary" onClick={() => { setSelected(s); setAction(null); }}>Ver</button>
+                          </div>
                         </td>
                       </tr>
                     );
@@ -183,31 +234,33 @@ export default function Submissions({ onCountChange }: Props) {
               )}
               {selected.artista && <div className="info-row"><span className="lbl">Artista / diseñador</span><span className="val">{selected.artista}</span></div>}
               {selected.fechaEpoca && <div className="info-row"><span className="lbl">Fecha / Época</span><span className="val">{selected.fechaEpoca}</span></div>}
-              <div className="info-row"><span className="lbl">Precio pedido</span><span className="val"><strong>{money(selected.precioSugerido, selected.moneda)}</strong>{selected.moneda ? ` ${selected.moneda}` : ''}</span></div>
-              {selected.precioBaseOfrecido != null && (
-                <div className="info-row"><span className="lbl">Precio acordado</span><span className="val">{money(selected.precioBaseOfrecido, selected.moneda)}</span></div>
-              )}
-              {selected.cuentaCobro && <div className="info-row"><span className="lbl">Cuenta destino</span><span className="val">{selected.cuentaCobro}</span></div>}
               <div className="info-row">
                 <span className="lbl">Estado</span>
                 <span className="val"><span className={`badge ${meta(selected.status).badge}`}>{meta(selected.status).label}</span></span>
               </div>
+              {selected.valorOfrecido != null && (
+                <div className="info-row"><span className="lbl">Valor ofrecido</span><span className="val">{money(selected.valorOfrecido, selected.moneda)}</span></div>
+              )}
+              {selected.precioBaseOfrecido != null && (
+                <div className="info-row"><span className="lbl">Tasación final</span><span className="val"><strong>{money(selected.precioBaseOfrecido, selected.moneda)}</strong>{selected.comisionPorcentaje != null ? ` · comisión ${Number(selected.comisionPorcentaje)}%` : ''}</span></div>
+              )}
+              {selected.cuentaCobro && <div className="info-row"><span className="lbl">Cuenta destino</span><span className="val">{selected.cuentaCobro}</span></div>}
+              {selected.enviadoAt && <div className="info-row"><span className="lbl">Enviado</span><span className="val">{fmt(selected.enviadoAt)}</span></div>}
+              {selected.recibidoAt && <div className="info-row"><span className="lbl">Recibido</span><span className="val">{fmt(selected.recibidoAt)}</span></div>}
             </div>
 
-            {selected.nombre && selected.descripcion && (
+            {selected.descripcion && (
               <div className="form-group">
                 <label>Descripción</label>
                 <p style={{ padding: '8px 12px', background: '#f8fafc', borderRadius: 6, fontSize: 13, lineHeight: 1.5 }}>{selected.descripcion}</p>
               </div>
             )}
-
             {selected.datosHistoricos && (
               <div className="form-group">
                 <label>Historia del objeto</label>
                 <p style={{ padding: '8px 12px', background: '#f8fafc', borderRadius: 6, fontSize: 13, lineHeight: 1.5 }}>{selected.datosHistoricos}</p>
               </div>
             )}
-
             {selected.images && selected.images.length > 0 && (
               <div className="form-group">
                 <label>Fotos</label>
@@ -219,19 +272,34 @@ export default function Submissions({ onCountChange }: Props) {
                 </div>
               </div>
             )}
-
             {selected.motivoRechazo && (
               <div style={{ background: '#fee2e2', borderRadius: 6, padding: '10px 14px', fontSize: 13, marginBottom: 16 }}>
                 <strong>Motivo de rechazo:</strong> {selected.motivoRechazo}
               </div>
             )}
+            {['oferta_inicial', 'por_enviar', 'tasacion_final'].includes(selected.status) && (
+              <div style={{ background: '#eef2ff', borderRadius: 6, padding: '10px 14px', fontSize: 13, marginBottom: 16, color: '#3730a3' }}>
+                {selected.status === 'oferta_inicial' && '⏳ Esperando que el vendedor acepte o rechace la oferta.'}
+                {selected.status === 'por_enviar' && '⏳ El vendedor aceptó. Esperando que envíe el ítem al depósito.'}
+                {selected.status === 'tasacion_final' && '⏳ Esperando que el vendedor acepte o rechace la tasación final.'}
+              </div>
+            )}
 
             <div className="modal-actions">
-              {canDecide(selected.status) && (
+              {selected.status === 'pendiente_empresa' && (
                 <>
-                  <button className="btn btn-success" onClick={() => openAccept(selected)}>✅ Aceptar</button>
+                  <button className="btn btn-success" onClick={() => openOffer(selected)}>💲 Ofrecer valor</button>
                   <button className="btn btn-danger" onClick={() => setAction('reject')}>❌ Rechazar</button>
                 </>
+              )}
+              {selected.status === 'oferta_inicial' && (
+                <button className="btn btn-danger" onClick={() => setAction('reject')}>❌ Rechazar</button>
+              )}
+              {selected.status === 'enviado' && (
+                <button className="btn btn-success" disabled={saving} onClick={() => handleReceived(selected)}>📦 Marcar recibido</button>
+              )}
+              {selected.status === 'recibido' && (
+                <button className="btn btn-success" onClick={() => openAppraisal(selected)}>💲 Tasación final</button>
               )}
               <button className="btn btn-secondary" onClick={() => setSelected(null)}>Cerrar</button>
             </div>
@@ -239,28 +307,52 @@ export default function Submissions({ onCountChange }: Props) {
         </div>
       )}
 
-      {/* Accept action */}
-      {selected && action === 'accept' && (
+      {/* Offer action */}
+      {selected && action === 'offer' && (
         <div className="modal-overlay" onClick={() => setAction(null)}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <h2>✅ Aceptar solicitud</h2>
+            <h2>💲 Ofrecer valor</h2>
             <p style={{ fontSize: 13, color: '#64748b', marginBottom: 16 }}>
-              El solicitante pide <strong>{money(selected.precioSugerido, selected.moneda)}</strong>
-              {selected.cuentaCobro ? <> en la cuenta <strong>{selected.cuentaCobro}</strong></> : null}. Confirmá el precio base de salida
-              (podés ajustarlo). Al aceptar, la pieza queda disponible para una futura subasta.
+              Ofrecé un valor inicial por la pieza. El vendedor lo acepta o rechaza; si acepta, deberá enviarla a la dirección indicada para inspección.
+            </p>
+            <div className="form-group">
+              <label>Valor ofrecido ({selected.moneda || 'ARS'})</label>
+              <input type="number" min="0" step="100" value={valor} onChange={(e) => setValor(e.target.value)} placeholder="ej: 50000" autoFocus />
+            </div>
+            <div className="form-group">
+              <label>Dirección de envío (opcional — hay una por defecto)</label>
+              <input value={direccion} onChange={(e) => setDireccion(e.target.value)} placeholder="Casa Central — Av. Corrientes 1234, CABA" />
+            </div>
+            <div className="modal-actions">
+              <button className="btn btn-success" onClick={handleOffer} disabled={saving || !valor}>{saving ? 'Guardando...' : 'Enviar oferta'}</button>
+              <button className="btn btn-secondary" onClick={() => setAction(null)}>Cancelar</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Appraisal action */}
+      {selected && action === 'appraisal' && (
+        <div className="modal-overlay" onClick={() => setAction(null)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <h2>💲 Tasación final</h2>
+            <p style={{ fontSize: 13, color: '#64748b', marginBottom: 16 }}>
+              Cargá el precio base de salida y la comisión. El vendedor acepta (la pieza va a subasta) o rechaza (se devuelve con envío a su cargo).
             </p>
             <div className="form-group">
               <label>Precio base de salida ({selected.moneda || 'ARS'})</label>
-              <input type="number" min="0" step="100" value={precio} onChange={(e) => setPrecio(e.target.value)} placeholder="ej: 50000" autoFocus />
+              <input type="number" min="0" step="100" value={base} onChange={(e) => setBase(e.target.value)} placeholder="ej: 50000" autoFocus />
             </div>
             <div className="form-group">
-              <label>Comisiones (texto informativo)</label>
-              <input value={comisiones} onChange={(e) => setComisiones(e.target.value)} placeholder="Ej: Comisión de venta 5%" />
+              <label>Comisión (%)</label>
+              <input type="number" min="0" max="100" step="0.5" value={comisionPct} onChange={(e) => setComisionPct(e.target.value)} placeholder="ej: 10" />
+            </div>
+            <div className="form-group">
+              <label>Detalle de comisiones (texto)</label>
+              <input value={comisiones} onChange={(e) => setComisiones(e.target.value)} placeholder="Ej: Comisión de venta + gastos" />
             </div>
             <div className="modal-actions">
-              <button className="btn btn-success" onClick={handleAccept} disabled={saving || !precio}>
-                {saving ? 'Guardando...' : 'Confirmar y aceptar'}
-              </button>
+              <button className="btn btn-success" onClick={handleAppraisal} disabled={saving || !base}>{saving ? 'Guardando...' : 'Enviar tasación'}</button>
               <button className="btn btn-secondary" onClick={() => setAction(null)}>Cancelar</button>
             </div>
           </div>

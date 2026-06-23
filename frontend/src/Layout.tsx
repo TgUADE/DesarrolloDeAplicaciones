@@ -6,19 +6,22 @@ interface Props {
   pendingUsers: number;
   pendingSubmissions: number;
   pendingPayments: number;
+  pendingProfileRequests: number;
 }
 
 const NAV = [
   { path: '/users', icon: '👥', label: 'Usuarios' },
   { path: '/submissions', icon: '📦', label: 'Solicitudes' },
   { path: '/payment-methods', icon: '💳', label: 'Medios de pago' },
+  { path: '/profile-requests', icon: '📝', label: 'Datos de perfil' },
   { path: '/duenios', icon: '🏷️', label: 'Dueños' },
   { path: '/auctions', icon: '🔨', label: 'Subastas' },
+  { path: '/auctioneers', icon: '🎙️', label: 'Subastadores' },
   { path: '/purchases', icon: '💰', label: 'Compras' },
   { path: '/seguros', icon: '🛡️', label: 'Seguros' },
 ];
 
-export default function Layout({ onLogout, pendingUsers, pendingSubmissions, pendingPayments }: Props) {
+export default function Layout({ onLogout, pendingUsers, pendingSubmissions, pendingPayments, pendingProfileRequests }: Props) {
   const navigate = useNavigate();
   const location = useLocation();
   const user = getStoredUser();
@@ -32,6 +35,7 @@ export default function Layout({ onLogout, pendingUsers, pendingSubmissions, pen
     if (path === '/users' && pendingUsers > 0) return pendingUsers;
     if (path === '/submissions' && pendingSubmissions > 0) return pendingSubmissions;
     if (path === '/payment-methods' && pendingPayments > 0) return pendingPayments;
+    if (path === '/profile-requests' && pendingProfileRequests > 0) return pendingProfileRequests;
     return null;
   };
 

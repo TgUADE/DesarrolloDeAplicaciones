@@ -72,6 +72,16 @@ export default function Perfil() {
 
       <View style={styles.body}>
         <Pressable
+          onPress={() => router.push('/perfil-datos')}
+          style={({ pressed }) => [styles.menuItem, pressed && styles.dim]}>
+          <View style={styles.menuLeft}>
+            <Ionicons name="person-outline" size={20} color={Brand.text} />
+            <Text style={styles.menuText}>Datos de perfil</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color={Brand.textMuted} />
+        </Pressable>
+
+        <Pressable
           onPress={() => router.push('/mis-compras')}
           style={({ pressed }) => [styles.menuItem, pressed && styles.dim]}>
           <View style={styles.menuLeft}>

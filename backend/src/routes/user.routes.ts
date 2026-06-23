@@ -10,6 +10,8 @@ router.use(verifyToken);
 
 router.get('/:id', userController.getById);
 router.put('/:id', userController.update);
+router.post('/:id/profile-change-requests', userController.createProfileChangeRequest);
+router.get('/:id/profile-change-requests', userController.listProfileChangeRequests);
 router.get('/:id/metrics', userController.getMetrics);
 router.get('/:id/messages', userController.getMessages);
 router.put('/:id/messages/:msgId/read', userController.markMessageRead);

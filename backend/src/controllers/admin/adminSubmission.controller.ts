@@ -10,14 +10,35 @@ export const adminSubmissionController = {
     } catch (err: any) { return serverError(res, err.message); }
   },
 
-  async accept(req: Request, res: Response) {
+  // [Admin] Ofrece un valor inicial (+ dirección de envío) → el vendedor acepta/rechaza.
+  async offer(req: Request, res: Response) {
     try {
-      const { precioBaseOfrecido, comisionesInfo } = req.body;
-      const sub = await submissionService.adminAccept(req.params.id, Number(precioBaseOfrecido), comisionesInfo);
+      const { valorOfrecido, direccionEnvio } = req.body;
+      const sub = await submissionService.adminOffer(req.params.id, Number(valorOfrecido), direccionEnvio);
       return ok(res, sub);
     } catch (err: any) {
-      const status = err.status || 500;
-      return res.status(status).json({ success: false, error: err.message });
+      return res.status(err.status || 500).json({ success: false, error: err.message });
+    }
+  },
+
+  // [Admin] Marca el ítem como recibido en el depósito.
+  async received(req: Request, res: Response) {
+    try {
+      const sub = await submissionService.adminMarkReceived(req.params.id);
+      return ok(res, sub);
+    } catch (err: any) {
+      return res.status(err.status || 500).json({ success: false, error: err.message });
+    }
+  },
+
+  // [Admin] Tasación final + % de comisión.
+  async appraisal(req: Request, res: Response) {
+    try {
+      const { precioBaseOfrecido, comisionPorcentaje, comisionesInfo } = req.body;
+      const sub = await submissionService.adminFinalAppraisal(req.params.id, Number(precioBaseOfrecido), Number(comisionPorcentaje), comisionesInfo);
+      return ok(res, sub);
+    } catch (err: any) {
+      return res.status(err.status || 500).json({ success: false, error: err.message });
     }
   },
 

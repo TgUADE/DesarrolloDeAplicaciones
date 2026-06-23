@@ -8,7 +8,7 @@ export const itemService = {
       where: { identificador: id },
       include: {
         app: true,
-        catalogo: { select: { subastaId: true } },
+        catalogo: { select: { subastaId: true, subasta: { select: { estado: true, app: { select: { currentItemId: true } } } } } },
         producto: {
           include: {
             app: true,
@@ -19,7 +19,12 @@ export const itemService = {
       },
     });
     if (!itemCatalogo) return null;
-    return mapItem(itemCatalogo, { includePrice });
+    const mapped = mapItem(itemCatalogo, { includePrice }) as any;
+    // ¿Este ítem es el que se está subastando ahora? (subasta abierta + currentItemId == este)
+    const subasta = itemCatalogo.catalogo?.subasta;
+    mapped.auctionStatus = subasta?.estado ?? null;
+    mapped.isCurrent = subasta?.estado === 'abierta' && subasta?.app?.currentItemId === itemCatalogo.identificador;
+    return mapped;
   },
 
   async getBids(itemCatalogoId: number) {

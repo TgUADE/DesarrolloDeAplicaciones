@@ -1,3 +1,4 @@
+import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useRef, useState } from 'react';
@@ -34,6 +35,7 @@ import { Brand, FontSize, FontWeight, Radius, space } from '@/constants/theme';
 import { calcMaxBid, calcMinBid } from '@/utils/bid-limits';
 import { getApiErrorMessage } from '@/utils/errors';
 import { formatCountdown, formatDate, formatMoney } from '@/utils/format';
+import { imageUrl } from '@/utils/media';
 
 export default function SubastaEnVivo() {
   const router = useRouter();
@@ -84,7 +86,10 @@ export default function SubastaEnVivo() {
   const min = item ? calcMinBid(precioBase, ultimaOferta, categoria) : 0;
   const max = item ? calcMaxBid(precioBase, ultimaOferta, categoria) : null;
   const moneda = auction?.moneda ?? '';
+  const cover = imageUrl(item?.images?.[0]?.url);
   const isTopBidder = bids.length > 0 && (bids[0].userId ?? bids[0].user?.id) === userId;
+  // El dueño no puede pujar por su propio ítem.
+  const isOwnItem = !!item?.currentOwner?.id && !!userId && String(item.currentOwner.id) === userId;
 
   useEffect(() => {
     if (!auctionId) return;
@@ -229,6 +234,7 @@ export default function SubastaEnVivo() {
   const submitBid = async () => {
     setBidError('');
     const value = Number(monto);
+    if (isOwnItem) return setBidError('No podés pujar por tu propio ítem.');
     if (!pmId) return setBidError('Necesitás un medio de pago verificado para pujar.');
     if (!value || Number.isNaN(value)) return setBidError('Ingresá un monto válido.');
     if (value < min) return setBidError(`La puja mínima es ${formatMoney(min, moneda)}.`);
@@ -305,14 +311,19 @@ export default function SubastaEnVivo() {
         </View>
         {item ? (
           <View style={styles.pieceBox}>
-            <Text style={styles.pieceLabel}>Pieza actual #{item.numeroPieza}</Text>
-            <Text style={styles.pieceTitle} numberOfLines={1}>
-              {item.descripcion}
-            </Text>
-            <Text style={styles.pieceMeta}>
-              {auction?.titulo}
-              {item.precioBase != null ? ` · Base: ${formatMoney(item.precioBase, moneda)}` : ''}
-            </Text>
+            {cover ? (
+              <Image source={{ uri: cover }} style={styles.pieceThumb} contentFit="cover" transition={150} />
+            ) : null}
+            <View style={styles.pieceTextCol}>
+              <Text style={styles.pieceLabel}>Pieza actual #{item.numeroPieza}</Text>
+              <Text style={styles.pieceTitle} numberOfLines={1}>
+                {item.descripcion}
+              </Text>
+              <Text style={styles.pieceMeta} numberOfLines={1}>
+                {auction?.titulo}
+                {item.precioBase != null ? ` · Base: ${formatMoney(item.precioBase, moneda)}` : ''}
+              </Text>
+            </View>
           </View>
         ) : null}
       </View>
@@ -390,7 +401,7 @@ export default function SubastaEnVivo() {
               placeholder={String(Math.ceil(min))}
               placeholderTextColor={Brand.placeholder}
               keyboardType="number-pad"
-              editable={canBid && !placing && !isTopBidder}
+              editable={canBid && !placing && !isTopBidder && !isOwnItem}
             />
           </View>
           <View style={styles.quickRow}>
@@ -403,8 +414,8 @@ export default function SubastaEnVivo() {
               <Pressable
                 key={q.label}
                 onPress={() => setQuick(q.v)}
-                disabled={!canBid || isTopBidder}
-                style={[styles.quick, (!canBid || isTopBidder) && styles.dim]}>
+                disabled={!canBid || isTopBidder || isOwnItem}
+                style={[styles.quick, (!canBid || isTopBidder || isOwnItem) && styles.dim]}>
                 <Text style={styles.quickText}>{q.label}</Text>
               </Pressable>
             ))}
@@ -412,7 +423,11 @@ export default function SubastaEnVivo() {
 
           {bidError ? <Text style={styles.bidError}>{bidError}</Text> : null}
 
-          {isTopBidder ? (
+          {isOwnItem ? (
+            <View style={styles.pmNotice}>
+              <Text style={styles.pmNoticeText}>Es tu propia pieza: no podés pujar por tu propio ítem.</Text>
+            </View>
+          ) : isTopBidder ? (
             <View style={styles.pmNotice}>
               <Text style={styles.pmNoticeText}>Sos el mejor postor. Esperá que alguien más puje.</Text>
             </View>
@@ -424,13 +439,13 @@ export default function SubastaEnVivo() {
 
           <Pressable
             onPress={submitBid}
-            disabled={!canBid || placing || isTopBidder}
-            style={({ pressed }) => [styles.bidBtn, (!canBid || pressed || placing || isTopBidder) && styles.dim]}>
+            disabled={!canBid || placing || isTopBidder || isOwnItem}
+            style={({ pressed }) => [styles.bidBtn, (!canBid || pressed || placing || isTopBidder || isOwnItem) && styles.dim]}>
             {placing ? (
               <ActivityIndicator color="#fff" />
             ) : (
               <Text style={styles.bidBtnText}>
-                {isTopBidder ? 'Mejor postor' : canBid ? `Pujar ${monto ? formatMoney(Number(monto), moneda) : ''}`.trim() : 'No podés pujar'}
+                {isOwnItem ? 'Es tu pieza' : isTopBidder ? 'Mejor postor' : canBid ? `Pujar ${monto ? formatMoney(Number(monto), moneda) : ''}`.trim() : 'No podés pujar'}
               </Text>
             )}
           </Pressable>
@@ -485,7 +500,9 @@ const styles = StyleSheet.create({
   headerTop: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
   back: { color: '#fff', fontSize: 24, fontWeight: FontWeight.bold },
   headerTitle: { flex: 1, color: '#fff', fontSize: FontSize.base, fontWeight: FontWeight.bold },
-  pieceBox: { marginTop: space.md, backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: Radius.md, padding: space.md },
+  pieceBox: { marginTop: space.md, flexDirection: 'row', alignItems: 'center', gap: space.md, backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: Radius.md, padding: space.md },
+  pieceThumb: { width: 56, height: 56, borderRadius: Radius.sm, backgroundColor: 'rgba(255,255,255,0.15)' },
+  pieceTextCol: { flex: 1 },
   pieceLabel: { fontSize: FontSize.xs, color: 'rgba(255,255,255,0.6)' },
   pieceTitle: { fontSize: FontSize.base, fontWeight: FontWeight.medium, color: '#fff', marginTop: 2 },
   pieceMeta: { fontSize: FontSize.xs, color: 'rgba(255,255,255,0.5)', marginTop: 2 },

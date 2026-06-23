@@ -127,10 +127,10 @@ export default function HomeSubastas() {
     }
   };
 
+  // Entrar a una subasta siempre lleva a su catálogo (overview). Desde ahí, el ítem
+  // que se está rematando entra a la puja en vivo; el resto, al detalle.
   const openAuction = (a: Auction) =>
-    a.status === 'abierta'
-      ? router.push({ pathname: '/live/[auctionId]', params: { auctionId: a.id } })
-      : router.push({ pathname: '/catalog/[auctionId]', params: { auctionId: a.id } });
+    router.push({ pathname: '/catalog/[auctionId]', params: { auctionId: a.id } });
 
   const matchesFilter = (a: Auction) => (filter === 'hoy' ? isToday(a.fechaHora) : true);
   const live = auctions.filter((a) => a.status === 'abierta' && matchesFilter(a));
@@ -250,7 +250,7 @@ export default function HomeSubastas() {
                       <LiveCard
                         key={a.id}
                         auction={a}
-                        onPress={() => router.push({ pathname: '/live/[auctionId]', params: { auctionId: a.id } })}
+                        onPress={() => router.push({ pathname: '/catalog/[auctionId]', params: { auctionId: a.id } })}
                         onToggleStar={isGuest ? undefined : () => toggleStar(a)}
                       />
                     ))

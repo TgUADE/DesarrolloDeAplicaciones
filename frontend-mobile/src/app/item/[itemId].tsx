@@ -118,10 +118,20 @@ export default function DetallePieza() {
                 <Pressable onPress={() => router.replace('/login')} style={[styles.cta, { backgroundColor: Brand.accent }]}>
                   <Text style={styles.ctaText}>Registrate para participar</Text>
                 </Pressable>
-              ) : (
+              ) : item.isCurrent ? (
                 <Pressable onPress={goLive} style={({ pressed }) => [styles.cta, pressed && styles.dim]}>
                   <Text style={styles.ctaText}>Ver en subasta en vivo</Text>
                 </Pressable>
+              ) : (
+                <View style={styles.notice}>
+                  <Text style={styles.noticeText}>
+                    {item.auctionStatus === 'abierta'
+                      ? '⏳ Este ítem todavía no se está subastando. Va a salir a remate cuando termine la pieza actual.'
+                      : item.auctionStatus === 'programada'
+                        ? '🗓️ Esta subasta todavía no comenzó. Vas a poder pujar cuando empiece.'
+                        : 'Este ítem no se está subastando en este momento.'}
+                  </Text>
+                </View>
               )}
             </View>
           </>
@@ -170,6 +180,8 @@ const styles = StyleSheet.create({
   },
   ctaText: { color: '#fff', fontSize: FontSize.base, fontWeight: FontWeight.bold },
   dim: { opacity: 0.85 },
+  notice: { backgroundColor: Brand.surface, borderWidth: 1, borderColor: Brand.border, borderRadius: Radius.sm, padding: space.md, marginTop: space.lg },
+  noticeText: { fontSize: FontSize.sm, color: Brand.textMuted, lineHeight: 20, textAlign: 'center' },
   errorBox: { marginTop: space.xl, alignItems: 'center', gap: space.sm, paddingHorizontal: space.lg },
   errorText: { color: Brand.danger, fontSize: FontSize.sm, textAlign: 'center' },
   retry: { color: Brand.primary, fontWeight: FontWeight.medium, fontSize: FontSize.sm },

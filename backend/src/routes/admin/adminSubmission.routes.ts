@@ -4,7 +4,9 @@ import { adminSubmissionController } from '../../controllers/admin/adminSubmissi
 const router = Router();
 
 router.get('/submissions', adminSubmissionController.list);
-router.patch('/submissions/:id/accept', adminSubmissionController.accept);
+router.patch('/submissions/:id/offer', adminSubmissionController.offer);
+router.patch('/submissions/:id/received', adminSubmissionController.received);
+router.patch('/submissions/:id/appraisal', adminSubmissionController.appraisal);
 router.patch('/submissions/:id/reject', adminSubmissionController.reject);
 
 export default router;
