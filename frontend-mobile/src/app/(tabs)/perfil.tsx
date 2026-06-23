@@ -92,6 +92,16 @@ export default function Perfil() {
         </Pressable>
 
         <Pressable
+          onPress={() => router.push('/seguros')}
+          style={({ pressed }) => [styles.menuItem, pressed && styles.dim]}>
+          <View style={styles.menuLeft}>
+            <Ionicons name="shield-checkmark-outline" size={20} color={Brand.text} />
+            <Text style={styles.menuText}>Mis seguros</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color={Brand.textMuted} />
+        </Pressable>
+
+        <Pressable
           onPress={handleLogout}
           style={({ pressed }) => [styles.logoutBtn, pressed && styles.dim]}>
           <Text style={styles.logoutText}>Cerrar sesión</Text>

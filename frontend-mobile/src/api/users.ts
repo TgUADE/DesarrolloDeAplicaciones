@@ -30,3 +30,50 @@ export async function listMyProducts(userId: string): Promise<MyProduct[]> {
   const res = await client.get(`/users/${userId}/products`);
   return res.data.data.products as MyProduct[];
 }
+
+export interface InsuredPiece {
+  identificador: number;
+  descripcionCompleta: string;
+  numeroPieza: string | null;
+  status: string | null;
+  moneda: string | null;
+}
+
+export interface PendingInsuranceRequest {
+  id: string;
+  valorSolicitado: number;
+  diferenciaPremio: number;
+  createdAt: string;
+}
+
+export interface MyInsurance {
+  nroPoliza: string;
+  compania: string;
+  importe: number;
+  polizaCombinada: boolean;
+  premioEstimado: number;
+  solicitudPendiente: PendingInsuranceRequest | null;
+  productos: InsuredPiece[];
+}
+
+/** GET /api/users/:id/insurances → pólizas de las que el usuario es beneficiario (dueño). */
+export async function listMyInsurances(userId: string): Promise<MyInsurance[]> {
+  const res = await client.get(`/users/${userId}/insurances`);
+  return res.data.data.seguros as MyInsurance[];
+}
+
+export interface IncreaseRequestResult {
+  id: string;
+  nroPoliza: string;
+  valorActual: number;
+  valorSolicitado: number;
+  diferenciaPremio: number;
+  estado: string;
+}
+
+/** POST /api/users/:id/insurances/:nroPoliza/increase-request → solicita aumentar el valor
+ *  asegurado. NO cambia el importe: crea una solicitud que la empresa debe aprobar. */
+export async function requestInsuranceIncrease(userId: string, nroPoliza: string, nuevoValor: number): Promise<IncreaseRequestResult> {
+  const res = await client.post(`/users/${userId}/insurances/${encodeURIComponent(nroPoliza)}/increase-request`, { nuevoValor });
+  return res.data.data as IncreaseRequestResult;
+}

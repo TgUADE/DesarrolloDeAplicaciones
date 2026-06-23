@@ -145,4 +145,65 @@ export const adminSeguroController = {
       return ok(res, { unassigned: true });
     } catch (err: any) { return serverError(res, err.message); }
   },
+
+  // ── Solicitudes de aumento del valor asegurado (las inicia el dueño desde la app) ──
+  async listRequests(req: Request, res: Response) {
+    try {
+      const estado = req.query.estado ? String(req.query.estado) : undefined;
+      const solicitudes = await prisma.seguroAumentoSolicitud.findMany({
+        where: estado ? { estado } : {},
+        include: {
+          duenio: { include: { persona: { select: { nombre: true, app: { select: { apellido: true } } } } } },
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+      return ok(res, {
+        solicitudes: solicitudes.map((s) => ({
+          id: s.id,
+          nroPoliza: s.nroPoliza,
+          valorActual: Number(s.valorActual),
+          valorSolicitado: Number(s.valorSolicitado),
+          diferenciaPremio: Number(s.diferenciaPremio),
+          estado: s.estado,
+          motivoRechazo: s.motivoRechazo,
+          createdAt: s.createdAt,
+          resueltaAt: s.resueltaAt,
+          duenio: s.duenio?.persona
+            ? { nombre: s.duenio.persona.nombre, apellido: s.duenio.persona.app?.apellido ?? '' }
+            : null,
+        })),
+      });
+    } catch (err: any) { return serverError(res, err.message); }
+  },
+
+  async approveRequest(req: Request, res: Response) {
+    try {
+      const solicitud = await prisma.seguroAumentoSolicitud.findUnique({ where: { id: req.params.id } });
+      if (!solicitud) return res.status(404).json({ success: false, error: 'Solicitud no encontrada' });
+      if (solicitud.estado !== 'pendiente') {
+        return res.status(409).json({ success: false, error: 'La solicitud ya fue resuelta' });
+      }
+      // Recién acá cambia el valor asegurado de la póliza.
+      const [, sol] = await prisma.$transaction([
+        prisma.seguro.update({ where: { nroPoliza: solicitud.nroPoliza }, data: { importe: solicitud.valorSolicitado } }),
+        prisma.seguroAumentoSolicitud.update({ where: { id: solicitud.id }, data: { estado: 'aprobada', resueltaAt: new Date() } }),
+      ]);
+      return ok(res, { id: sol.id, estado: sol.estado, nroPoliza: sol.nroPoliza, importe: Number(solicitud.valorSolicitado) });
+    } catch (err: any) { return serverError(res, err.message); }
+  },
+
+  async rejectRequest(req: Request, res: Response) {
+    try {
+      const solicitud = await prisma.seguroAumentoSolicitud.findUnique({ where: { id: req.params.id } });
+      if (!solicitud) return res.status(404).json({ success: false, error: 'Solicitud no encontrada' });
+      if (solicitud.estado !== 'pendiente') {
+        return res.status(409).json({ success: false, error: 'La solicitud ya fue resuelta' });
+      }
+      const sol = await prisma.seguroAumentoSolicitud.update({
+        where: { id: solicitud.id },
+        data: { estado: 'rechazada', motivoRechazo: req.body.motivoRechazo ?? null, resueltaAt: new Date() },
+      });
+      return ok(res, { id: sol.id, estado: sol.estado });
+    } catch (err: any) { return serverError(res, err.message); }
+  },
 };

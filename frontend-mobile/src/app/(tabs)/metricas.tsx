@@ -265,11 +265,11 @@ const styles = StyleSheet.create({
     paddingVertical: space.xs,
   },
   statLabel: { fontSize: FontSize.sm, color: Brand.textMuted, flex: 1 },
-  statValue: { fontSize: FontSize.base, fontWeight: FontWeight.semibold, color: Brand.text },
+  statValue: { fontSize: FontSize.base, fontWeight: FontWeight.medium, color: Brand.text },
 
   activityTitle: {
     fontSize: FontSize.sm,
-    fontWeight: FontWeight.semibold,
+    fontWeight: FontWeight.medium,
     color: Brand.text,
     marginBottom: space.xs,
   },

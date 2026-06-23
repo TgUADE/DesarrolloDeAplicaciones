@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import { userService } from '../services/user.service';
 import { messageService } from '../services/message.service';
-import { ok, notFound, forbidden, serverError } from '../utils/apiResponse';
+import { ok, notFound, forbidden, serverError, badRequest, conflict } from '../utils/apiResponse';
 
 function isSelfOrAdmin(req: Request, targetId: string): boolean {
   return req.user?.userId === targetId || req.user?.isAdmin === true;
@@ -80,5 +80,27 @@ export const userController = {
       const result = await userService.getProducts(parseInt(req.params.id));
       return ok(res, result);
     } catch (err: any) { return serverError(res, err.message); }
+  },
+
+  async getInsurances(req: Request, res: Response) {
+    try {
+      if (!isSelfOrAdmin(req, req.params.id)) return forbidden(res);
+      const result = await userService.getInsurances(parseInt(req.params.id));
+      return ok(res, result);
+    } catch (err: any) { return serverError(res, err.message); }
+  },
+
+  async requestInsuranceIncrease(req: Request, res: Response) {
+    try {
+      if (!isSelfOrAdmin(req, req.params.id)) return forbidden(res);
+      const result = await userService.requestInsuranceIncrease(parseInt(req.params.id), req.params.nroPoliza, Number(req.body.nuevoValor));
+      return ok(res, result, 201);
+    } catch (err: any) {
+      if (err?.status === 404) return notFound(res, err.message);
+      if (err?.status === 403) return forbidden(res, err.message);
+      if (err?.status === 409) return conflict(res, err.message);
+      if (err?.status === 400) return badRequest(res, err.message);
+      return serverError(res, err.message);
+    }
   },
 };

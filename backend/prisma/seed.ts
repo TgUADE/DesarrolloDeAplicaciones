@@ -315,7 +315,7 @@ async function main() {
   });
 
   // ── Dueño (con verificación financiera/judicial y calificación de riesgo) ──────
-  const duenioId = await upsertPersona('duenio@demo.com', { nombre: 'María', direccion: 'Calle Falsa 123, CABA', documento: '26666666663' }, { apellido: 'López', registrationStatus: 'aprobado', paisOrigen: 'Argentina' });
+  const duenioId = await upsertPersona('duenio@demo.com', { nombre: 'María', direccion: 'Calle Falsa 123, CABA', documento: '26666666663' }, { apellido: 'López', passwordHash: userHash, registrationStatus: 'aprobado', paisOrigen: 'Argentina' });
   await prisma.duenio.upsert({
     where: { identificador: duenioId },
     create: { identificador: duenioId, verificadorId, numeroPais: 32, verificacionFinanciera: 'si', verificacionJudicial: 'si', calificacionRiesgo: 2 },
@@ -323,7 +323,7 @@ async function main() {
   });
 
   // ── Segundo dueño (para verificar póliza por dueño) ───────────────────────────
-  const duenio2Id = await upsertPersona('duenio2@demo.com', { nombre: 'Roberto', direccion: 'Libertad 456, Rosario', documento: '28777777779' }, { apellido: 'Garmendia', registrationStatus: 'aprobado', paisOrigen: 'Argentina' });
+  const duenio2Id = await upsertPersona('duenio2@demo.com', { nombre: 'Roberto', direccion: 'Libertad 456, Rosario', documento: '28777777779' }, { apellido: 'Garmendia', passwordHash: userHash, registrationStatus: 'aprobado', paisOrigen: 'Argentina' });
   await prisma.duenio.upsert({
     where: { identificador: duenio2Id },
     create: { identificador: duenio2Id, verificadorId, numeroPais: 32, verificacionFinanciera: 'si', verificacionJudicial: 'no', calificacionRiesgo: 3 },
@@ -434,6 +434,8 @@ async function main() {
   console.log('\nCredenciales:');
   console.log('  Admin:    admin@subastas.com / admin123');
   console.log('  Usuario:  usuario@demo.com / user123  (categoría oro)');
+  console.log('  Dueño 1:  duenio@demo.com / user123  (María López · POL-DUENIO-12)');
+  console.log('  Dueño 2:  duenio2@demo.com / user123 (Roberto Garmendia · POL-DUENIO-13)');
 }
 
 main()

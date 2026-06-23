@@ -86,6 +86,7 @@ model Seguro {
 
   app       SeguroApp?
   productos Producto[]
+  aumentos  SeguroAumentoSolicitud[]
 
   @@map("seguros")
 }
@@ -117,9 +118,10 @@ model Duenio {
   verificadorId          Int      @map("verificador")
   verificador            Empleado @relation("DuenioVerificador", fields: [verificadorId], references: [identificador])
 
-  productos Producto[]
-  registros RegistroDeSubasta[] @relation("RegistroDuenio")
-  seguros   SeguroApp[]         @relation("DuenioSeguros")
+  productos      Producto[]
+  registros      RegistroDeSubasta[]      @relation("RegistroDuenio")
+  seguros        SeguroApp[]              @relation("DuenioSeguros")
+  aumentosSeguro SeguroAumentoSolicitud[] @relation("DuenioAumentos")
 
   @@map("duenios")
 }
@@ -409,6 +411,27 @@ model SeguroApp {
   updatedAt DateTime @updatedAt
 
   @@map("seguros_app")
+}
+
+// Solicitud del dueño para aumentar el valor asegurado de su póliza. El importe de
+// la póliza NO cambia hasta que la empresa (admin) aprueba la solicitud. Tabla nueva
+// de app: la tabla core `seguros` permanece intacta.
+model SeguroAumentoSolicitud {
+  id               String    @id @default(cuid())
+  nroPoliza        String    @map("nro_poliza") @db.VarChar(30)
+  seguro           Seguro    @relation(fields: [nroPoliza], references: [nroPoliza], onDelete: Cascade)
+  duenioId         Int       @map("duenio_id")
+  duenio           Duenio    @relation("DuenioAumentos", fields: [duenioId], references: [identificador])
+  valorActual      Decimal   @db.Decimal(18, 2)
+  valorSolicitado  Decimal   @db.Decimal(18, 2)
+  diferenciaPremio Decimal   @db.Decimal(18, 2)
+  estado           String    @default("pendiente") @db.VarChar(20) // pendiente | aprobada | rechazada
+  motivoRechazo    String?
+  resueltaAt       DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@map("seguro_aumento_solicitudes")
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

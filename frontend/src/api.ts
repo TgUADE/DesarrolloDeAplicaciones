@@ -395,3 +395,30 @@ export async function unassignProductFromPolicy(nroPoliza: string, productoId: n
 export async function getAllItems(): Promise<{ items: AdminProducto[] }> {
   return req('/admin/items');
 }
+
+// Solicitudes de aumento del valor asegurado (las inician los dueños desde la app)
+export interface SeguroAumento {
+  id: string;
+  nroPoliza: string;
+  valorActual: number;
+  valorSolicitado: number;
+  diferenciaPremio: number;
+  estado: string; // pendiente | aprobada | rechazada
+  motivoRechazo: string | null;
+  createdAt: string;
+  resueltaAt: string | null;
+  duenio: { nombre: string; apellido: string } | null;
+}
+
+export async function getSeguroRequests(estado?: string): Promise<{ solicitudes: SeguroAumento[] }> {
+  const qs = estado ? `?estado=${encodeURIComponent(estado)}` : '';
+  return req(`/admin/seguros/aumentos${qs}`);
+}
+
+export async function approveSeguroRequest(id: string): Promise<unknown> {
+  return req(`/admin/seguros/aumentos/${id}/approve`, { method: 'PATCH' });
+}
+
+export async function rejectSeguroRequest(id: string, motivoRechazo?: string): Promise<unknown> {
+  return req(`/admin/seguros/aumentos/${id}/reject`, { method: 'PATCH', body: JSON.stringify({ motivoRechazo }) });
+}

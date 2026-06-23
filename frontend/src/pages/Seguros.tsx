@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import {
   getSeguros, createSeguro, updateSeguro, deleteSeguro,
   assignProductToPolicy, unassignProductFromPolicy, getAllItems,
-  type AdminSeguro, type AdminProducto,
+  getSeguroRequests, approveSeguroRequest, rejectSeguroRequest,
+  type AdminSeguro, type AdminProducto, type SeguroAumento,
 } from '../api';
 
 type Modal =
@@ -14,6 +15,7 @@ type Modal =
 export default function Seguros() {
   const [seguros, setSeguros] = useState<AdminSeguro[]>([]);
   const [allItems, setAllItems] = useState<AdminProducto[]>([]);
+  const [requests, setRequests] = useState<SeguroAumento[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
@@ -34,13 +36,35 @@ export default function Seguros() {
     setLoading(true);
     setError('');
     try {
-      const [sd, it] = await Promise.all([getSeguros(), getAllItems()]);
+      const [sd, it, rq] = await Promise.all([getSeguros(), getAllItems(), getSeguroRequests('pendiente')]);
       setSeguros(sd.seguros);
       setAllItems(it.items);
+      setRequests(rq.solicitudes);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Error al cargar');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleApproveRequest = async (r: SeguroAumento) => {
+    setError('');
+    try {
+      await approveSeguroRequest(r.id);
+      load();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Error al aprobar');
+    }
+  };
+
+  const handleRejectRequest = async (r: SeguroAumento) => {
+    const motivo = prompt(`Rechazar la solicitud de ${r.nroPoliza}. Motivo (opcional):`) ?? undefined;
+    setError('');
+    try {
+      await rejectSeguroRequest(r.id, motivo);
+      load();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Error al rechazar');
     }
   };
 
@@ -151,6 +175,43 @@ export default function Seguros() {
       </div>
 
       {error && <div className="error-banner">⚠️ {error}</div>}
+
+      {requests.length > 0 && (
+        <div className="card" style={{ marginBottom: 16, borderColor: '#f59e0b' }}>
+          <h3 style={{ margin: '0 0 12px', color: '#b45309' }}>
+            ⏳ Solicitudes de aumento de valor pendientes ({requests.length})
+          </h3>
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Póliza</th>
+                  <th>Dueño</th>
+                  <th>Valor actual</th>
+                  <th>Valor solicitado</th>
+                  <th>Dif. premio</th>
+                  <th>Acciones</th>
+                </tr>
+              </thead>
+              <tbody>
+                {requests.map((r) => (
+                  <tr key={r.id}>
+                    <td><strong>{r.nroPoliza}</strong></td>
+                    <td>{r.duenio ? `${r.duenio.nombre} ${r.duenio.apellido}` : '—'}</td>
+                    <td>${fmtMoney(r.valorActual)}</td>
+                    <td><strong>${fmtMoney(r.valorSolicitado)}</strong></td>
+                    <td style={{ color: '#b45309' }}>+${fmtMoney(r.diferenciaPremio)}</td>
+                    <td style={{ display: 'flex', gap: 6 }}>
+                      <button className="btn btn-sm btn-primary" onClick={() => handleApproveRequest(r)}>Aprobar</button>
+                      <button className="btn btn-sm btn-danger" onClick={() => handleRejectRequest(r)}>Rechazar</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       <div className="card">
         <div className="table-wrap">
