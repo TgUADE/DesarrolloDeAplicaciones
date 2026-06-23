@@ -305,13 +305,19 @@ async function main() {
     update: { categoria: 'platino', admitido: 'si', verificadorId, numeroPais: 32 },
   });
 
-  // ── Subastador ───────────────────────────────────────────────────────────────
-  const subId = await upsertPersona('rematador@subastas.com', { nombre: 'Carlos', documento: '24555555556' }, { apellido: 'Rodríguez', registrationStatus: 'aprobado' });
-  await prisma.subastador.upsert({
-    where: { identificador: subId },
-    create: { identificador: subId, matricula: 'MAT-001', region: 'CABA', app: { create: { activo: true, email: 'rematador@subastas.com' } } },
-    update: { matricula: 'MAT-001', region: 'CABA', app: { upsert: { create: { activo: true, email: 'rematador@subastas.com' }, update: { activo: true } } } },
-  });
+  // ── Subastadores (martilleros) ────────────────────────────────────────────────
+  async function seedSubastador(email: string, nombre: string, apellido: string, documento: string, matricula: string, region: string) {
+    const id = await upsertPersona(email, { nombre, documento }, { apellido, registrationStatus: 'aprobado' });
+    await prisma.subastador.upsert({
+      where: { identificador: id },
+      create: { identificador: id, matricula, region, app: { create: { activo: true, email } } },
+      update: { matricula, region, app: { upsert: { create: { activo: true, email }, update: { activo: true } } } },
+    });
+    return id;
+  }
+  const subId = await seedSubastador('rematador@subastas.com', 'Carlos', 'Rodríguez', '24555555556', 'MAT-001', 'CABA');
+  const sub2Id = await seedSubastador('rematador2@subastas.com', 'Lucía', 'Fernández', '27666666667', 'MAT-002', 'GBA Norte');
+  const sub3Id = await seedSubastador('rematador3@subastas.com', 'Diego', 'Martínez', '20777777778', 'MAT-003', 'Córdoba');
 
   // ── Dueño (con verificación financiera/judicial y calificación de riesgo) ──────
   const duenioId = await upsertPersona('duenio@demo.com', { nombre: 'María', direccion: 'Calle Falsa 123, CABA', documento: '26666666663' }, { apellido: 'López', registrationStatus: 'aprobado', paisOrigen: 'Argentina' });
@@ -320,7 +326,7 @@ async function main() {
     create: { identificador: duenioId, verificadorId, numeroPais: 32, verificacionFinanciera: 'si', verificacionJudicial: 'si', calificacionRiesgo: 2 },
     update: { verificadorId, numeroPais: 32, verificacionFinanciera: 'si', verificacionJudicial: 'si', calificacionRiesgo: 2 },
   });
-  console.log(`✅ Usuarios (admin, demo=${demoId}, sofia, martin, empresa=${empresaId}, subastador=${subId}, dueño=${duenioId})`);
+  console.log(`✅ Usuarios (admin, demo=${demoId}, sofia, martin, empresa=${empresaId}, subastadores=${subId}/${sub2Id}/${sub3Id}, dueño=${duenioId})`);
 
   const common = { subastadorId: subId, duenioId, revisorId, responsableId };
 
@@ -350,7 +356,7 @@ async function main() {
   });
 
   await seedAuction({
-    ...common, id: 3, titulo: 'Joyas y Relojería', descripcion: 'Alta joyería y relojes de autor.',
+    ...common, subastadorId: sub2Id, id: 3, titulo: 'Joyas y Relojería', descripcion: 'Alta joyería y relojes de autor.',
     fechaHora: new Date(Date.now() + 20 * DAY), ubicacion: 'Four Seasons, Posadas 1086, CABA', categoria: 'plata', estado: 'programada', moneda: 'USD',
     tieneDeposito: 'si', seguridadPropia: 'si', capacidadAsistentes: 40,
     productos: [
@@ -360,7 +366,7 @@ async function main() {
   });
 
   await seedAuction({
-    ...common, id: 4, titulo: 'Vinos y Destilados de Colección', descripcion: 'Añadas únicas y botellas de edición limitada.',
+    ...common, subastadorId: sub3Id, id: 4, titulo: 'Vinos y Destilados de Colección', descripcion: 'Añadas únicas y botellas de edición limitada.',
     fechaHora: new Date(Date.now() + 30 * DAY), ubicacion: 'La Rural, Av. Sarmiento 2704, CABA', categoria: 'oro', estado: 'programada',
     tieneDeposito: 'si', seguridadPropia: 'no', capacidadAsistentes: 60,
     productos: [

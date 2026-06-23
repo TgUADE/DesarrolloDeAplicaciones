@@ -12,16 +12,20 @@ router.patch('/purchases/:id/shipped', adminPurchaseController.markShipped);
 router.patch('/purchases/:id/delivered', adminPurchaseController.markDelivered);
 
 // Subastadores (equivalente a auctioneers en el nuevo schema)
-router.get('/auctioneers', async (_req, res) => {
+router.get('/auctioneers', async (req, res) => {
   try {
+    // Por defecto solo activos (para el selector al crear subasta); con ?all=1 trae todos (ABM).
+    const where = req.query.all ? {} : { app: { activo: true } };
     const subastadores = await prisma.subastador.findMany({
-      where: { app: { activo: true } },
-      include: { app: true, persona: { select: { identificador: true, nombre: true, app: { select: { apellido: true } } } } },
+      where,
+      include: { app: true, persona: { select: { identificador: true, nombre: true, app: { select: { apellido: true, email: true } } } } },
+      orderBy: { identificador: 'asc' },
     });
     const mapped = subastadores.map((s) => ({
       id: s.identificador.toString(),
       nombre: s.persona.nombre,
       apellido: s.persona.app?.apellido ?? '',
+      email: s.persona.app?.email ?? null,
       matricula: s.matricula,
       region: s.region,
       activo: s.app?.activo ?? false,

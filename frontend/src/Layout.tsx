@@ -16,6 +16,7 @@ const NAV = [
   { path: '/profile-requests', icon: '📝', label: 'Datos de perfil' },
   { path: '/duenios', icon: '🏷️', label: 'Dueños' },
   { path: '/auctions', icon: '🔨', label: 'Subastas' },
+  { path: '/auctioneers', icon: '🎙️', label: 'Subastadores' },
   { path: '/purchases', icon: '💰', label: 'Compras' },
 ];
 

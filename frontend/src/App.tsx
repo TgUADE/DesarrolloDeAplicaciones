@@ -7,6 +7,7 @@ import Submissions from './pages/Submissions';
 import PaymentMethods from './pages/PaymentMethods';
 import Duenios from './pages/Duenios';
 import Auctions from './pages/Auctions';
+import Auctioneers from './pages/Auctioneers';
 import Purchases from './pages/Purchases';
 import ProfileRequests from './pages/ProfileRequests';
 import { getStoredUser, getUsers, getSubmissions, getPaymentMethods, getProfileChangeRequests } from './api';
@@ -59,6 +60,7 @@ export default function App() {
         <Route path="profile-requests" element={<ProfileRequests onCountChange={setPendingProfileRequests} />} />
         <Route path="duenios" element={<Duenios />} />
         <Route path="auctions" element={<Auctions />} />
+        <Route path="auctioneers" element={<Auctioneers />} />
         <Route path="purchases" element={<Purchases />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />

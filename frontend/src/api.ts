@@ -78,8 +78,10 @@ export interface Auctioneer {
   id: string;
   nombre: string;
   apellido: string;
-  matricula: string;
-  region: string;
+  email?: string | null;
+  matricula: string | null;
+  region: string | null;
+  activo?: boolean;
 }
 
 export interface Purchase {
@@ -216,8 +218,19 @@ export async function getAuctions(): Promise<{ auctions: Auction[] }> {
   return req('/auctions?limit=50');
 }
 
-export async function getAuctioneers(): Promise<{ auctioneers: Auctioneer[] }> {
-  return req('/admin/auctioneers');
+export async function getAuctioneers(all = false): Promise<{ auctioneers: Auctioneer[] }> {
+  return req(`/admin/auctioneers${all ? '?all=1' : ''}`);
+}
+
+export async function createAuctioneer(data: { nombre: string; apellido: string; email?: string; matricula: string; region: string }): Promise<unknown> {
+  return req('/admin/auctioneers', { method: 'POST', body: JSON.stringify(data) });
+}
+
+export async function updateAuctioneer(
+  id: string,
+  data: Partial<{ nombre: string; apellido: string; matricula: string; region: string; activo: boolean }>,
+): Promise<unknown> {
+  return req(`/admin/auctioneers/${id}`, { method: 'PUT', body: JSON.stringify(data) });
 }
 
 export async function createAuction(data: {
