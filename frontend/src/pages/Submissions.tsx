@@ -18,8 +18,10 @@ const STATUS_META: Record<string, { label: string; badge: string }> = {
   rechazada_usuario: { label: 'Rechazada (usuario)', badge: 'badge-gray' },
 };
 
-const money = (n?: number | string | null) =>
-  n != null && n !== '' ? Number(n).toLocaleString('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 }) : '—';
+const money = (n?: number | string | null, moneda?: string | null) =>
+  n != null && n !== ''
+    ? Number(n).toLocaleString('es-AR', { style: 'currency', currency: moneda === 'USD' ? 'USD' : 'ARS', maximumFractionDigits: 0 })
+    : '—';
 
 interface Props {
   onCountChange: (n: number) => void;
@@ -141,8 +143,8 @@ export default function Submissions({ onCountChange }: Props) {
                               <div style={{ width: 40, height: 40, borderRadius: 6, background: '#e2e8f0', flexShrink: 0 }} />
                             )}
                             <div style={{ maxWidth: 220 }}>
-                              <strong style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.descripcion}</strong>
-                              <span style={{ color: '#94a3b8', fontSize: 11 }}>{fotosCount(s)} foto{fotosCount(s) !== 1 ? 's' : ''}</span>
+                              <strong style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.nombre || s.descripcion}</strong>
+                              <span style={{ color: '#94a3b8', fontSize: 11 }}>{s.artista ? `${s.artista} · ` : ''}{fotosCount(s)} foto{fotosCount(s) !== 1 ? 's' : ''}</span>
                             </div>
                           </div>
                         </td>
@@ -151,7 +153,7 @@ export default function Submissions({ onCountChange }: Props) {
                             ? <><strong>{s.persona.nombre} {s.persona.apellido}</strong><br /><span style={{ color: '#94a3b8', fontSize: 11 }}>{s.persona.email}</span></>
                             : <span style={{ color: '#94a3b8' }}>—</span>}
                         </td>
-                        <td><strong>{money(s.precioSugerido)}</strong></td>
+                        <td><strong>{money(s.precioSugerido, s.moneda)}</strong></td>
                         <td><span className={`badge ${m.badge}`}>{m.label}</span></td>
                         <td style={{ color: '#64748b' }}>{fmt(s.createdAt)}</td>
                         <td>
@@ -171,7 +173,7 @@ export default function Submissions({ onCountChange }: Props) {
       {selected && !action && (
         <div className="modal-overlay" onClick={() => setSelected(null)}>
           <div className="modal" style={{ width: 560 }} onClick={(e) => e.stopPropagation()}>
-            <h2>📦 {selected.descripcion}</h2>
+            <h2>📦 {selected.nombre || selected.descripcion}</h2>
             <div className="info-grid">
               {selected.persona && (
                 <>
@@ -179,19 +181,29 @@ export default function Submissions({ onCountChange }: Props) {
                   <div className="info-row"><span className="lbl">Email</span><span className="val">{selected.persona.email}</span></div>
                 </>
               )}
-              <div className="info-row"><span className="lbl">Precio pedido</span><span className="val"><strong>{money(selected.precioSugerido)}</strong></span></div>
+              {selected.artista && <div className="info-row"><span className="lbl">Artista / diseñador</span><span className="val">{selected.artista}</span></div>}
+              {selected.fechaEpoca && <div className="info-row"><span className="lbl">Fecha / Época</span><span className="val">{selected.fechaEpoca}</span></div>}
+              <div className="info-row"><span className="lbl">Precio pedido</span><span className="val"><strong>{money(selected.precioSugerido, selected.moneda)}</strong>{selected.moneda ? ` ${selected.moneda}` : ''}</span></div>
               {selected.precioBaseOfrecido != null && (
-                <div className="info-row"><span className="lbl">Precio acordado</span><span className="val">{money(selected.precioBaseOfrecido)}</span></div>
+                <div className="info-row"><span className="lbl">Precio acordado</span><span className="val">{money(selected.precioBaseOfrecido, selected.moneda)}</span></div>
               )}
+              {selected.cuentaCobro && <div className="info-row"><span className="lbl">Cuenta destino</span><span className="val">{selected.cuentaCobro}</span></div>}
               <div className="info-row">
                 <span className="lbl">Estado</span>
                 <span className="val"><span className={`badge ${meta(selected.status).badge}`}>{meta(selected.status).label}</span></span>
               </div>
             </div>
 
+            {selected.nombre && selected.descripcion && (
+              <div className="form-group">
+                <label>Descripción</label>
+                <p style={{ padding: '8px 12px', background: '#f8fafc', borderRadius: 6, fontSize: 13, lineHeight: 1.5 }}>{selected.descripcion}</p>
+              </div>
+            )}
+
             {selected.datosHistoricos && (
               <div className="form-group">
-                <label>Datos históricos</label>
+                <label>Historia del objeto</label>
                 <p style={{ padding: '8px 12px', background: '#f8fafc', borderRadius: 6, fontSize: 13, lineHeight: 1.5 }}>{selected.datosHistoricos}</p>
               </div>
             )}
@@ -233,11 +245,12 @@ export default function Submissions({ onCountChange }: Props) {
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <h2>✅ Aceptar solicitud</h2>
             <p style={{ fontSize: 13, color: '#64748b', marginBottom: 16 }}>
-              El solicitante pide <strong>{money(selected.precioSugerido)}</strong>. Confirmá el precio base de salida
+              El solicitante pide <strong>{money(selected.precioSugerido, selected.moneda)}</strong>
+              {selected.cuentaCobro ? <> en la cuenta <strong>{selected.cuentaCobro}</strong></> : null}. Confirmá el precio base de salida
               (podés ajustarlo). Al aceptar, la pieza queda disponible para una futura subasta.
             </p>
             <div className="form-group">
-              <label>Precio base de salida ($)</label>
+              <label>Precio base de salida ({selected.moneda || 'ARS'})</label>
               <input type="number" min="0" step="100" value={precio} onChange={(e) => setPrecio(e.target.value)} placeholder="ej: 50000" autoFocus />
             </div>
             <div className="form-group">

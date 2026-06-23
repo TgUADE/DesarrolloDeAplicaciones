@@ -25,7 +25,7 @@ export default function App() {
     getSubmissions('pendiente_empresa')
       .then((d) => setPendingSubmissions(d.submissions.length))
       .catch(() => {});
-    getPaymentMethods(false)
+    getPaymentMethods('pendiente')
       .then((d) => setPendingPayments(d.paymentMethods.length))
       .catch(() => {});
   }, [isAuth]);

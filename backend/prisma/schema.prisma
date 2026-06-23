@@ -328,6 +328,7 @@ model ProductoApp {
   cantidadElementos    Int             @default(1)
   descripcionElementos String?
   status               String          @default("disponible") @db.VarChar(20)
+  moneda               String          @default("ARS") @db.VarChar(3)
   deposito             String?
   ubicacion            String?
   submissionId         String?         @unique
@@ -403,7 +404,7 @@ model PaymentMethod {
   personaId      Int
   persona        Persona  @relation(fields: [personaId], references: [identificador])
   tipo           String   @db.VarChar(50)
-  moneda         String   @db.VarChar(3)
+  moneda         String   @db.VarChar(10) // ARS | USD | AMBAS (AMBAS solo para tarjetas)
   banco          String?
   numeroCuenta   String?
   swift          String?
@@ -412,6 +413,7 @@ model PaymentMethod {
   vencimiento    String?
   montoGarantia  Decimal? @db.Decimal(12, 2)
   verificado     Boolean  @default(false)
+  estado         String   @default("pendiente") @db.VarChar(20)
   activo         Boolean  @default(true)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
@@ -448,13 +450,17 @@ model ItemSubmission {
   id                   String    @id @default(cuid())
   personaId            Int
   persona              Persona   @relation(fields: [personaId], references: [identificador])
+  nombre               String?
   descripcion          String
+  artista              String?
+  fechaEpoca           String?
   datosHistoricos      String?
   declaracionPropiedad Boolean   @default(false)
   origenLicito         Boolean   @default(false)
   status               String    @default("pendiente_empresa") @db.VarChar(30)
   precioSugerido       Decimal?  @db.Decimal(12, 2)
   precioBaseOfrecido   Decimal?  @db.Decimal(12, 2)
+  moneda               String?   @db.VarChar(3)
   comisionesInfo       String?
   motivoRechazo        String?
   gastoDevolucion      Decimal?  @db.Decimal(12, 2)

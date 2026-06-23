@@ -29,11 +29,16 @@ export interface PUser {
 export interface Submission {
   id: string;
   personaId: number;
+  nombre: string | null;
   descripcion: string;
+  artista: string | null;
+  fechaEpoca: string | null;
   datosHistoricos: string | null;
   status: string;
   precioSugerido: number | string | null;
   precioBaseOfrecido: number | string | null;
+  moneda: string | null;
+  cuentaCobro: string | null;
   comisionesInfo: string | null;
   motivoRechazo: string | null;
   createdAt: string;
@@ -242,14 +247,16 @@ export interface AdminProducto {
   descripcionCompleta?: string;
   numeroPieza?: string;
   status?: string;
+  moneda?: string;
   deposito?: string | null;
   seguro?: { importe: number | string } | null;
   fotos?: { url: string | null }[];
   duenio?: { persona?: { nombre: string; apellido: string } };
 }
 
-export async function getAvailableItems(): Promise<{ items: AdminProducto[] }> {
-  return req('/admin/items?status=disponible');
+/** Productos disponibles para asignar. Si se pasa `moneda`, solo los de esa moneda. */
+export async function getAvailableItems(moneda?: string): Promise<{ items: AdminProducto[] }> {
+  return req(`/admin/items?status=disponible${moneda ? `&moneda=${encodeURIComponent(moneda)}` : ''}`);
 }
 
 // Asigna un producto disponible al catálogo de una subasta
@@ -271,21 +278,22 @@ export interface AdminPaymentMethod {
   numeroTarjeta?: string | null;
   titularTarjeta?: string | null;
   montoGarantia?: number | null;
+  estado: string; // pendiente | aprobada | rechazada
   verificado: boolean;
   activo: boolean;
   createdAt: string;
   persona?: { id: string; nombre: string; apellido: string; email: string | null } | null;
 }
 
-export async function getPaymentMethods(verificado?: boolean): Promise<{ paymentMethods: AdminPaymentMethod[] }> {
-  const qs = verificado === undefined ? '' : `?verificado=${verificado}`;
+export async function getPaymentMethods(estado?: string): Promise<{ paymentMethods: AdminPaymentMethod[] }> {
+  const qs = estado ? `?estado=${estado}` : '';
   return req(`/admin/payment-methods${qs}`);
 }
 
-export async function verifyPaymentMethod(personaId: number, pmId: string, verificado: boolean): Promise<unknown> {
+export async function verifyPaymentMethod(personaId: number, pmId: string, estado: 'aprobada' | 'rechazada' | 'pendiente'): Promise<unknown> {
   return req(`/admin/users/${personaId}/payment-methods/${pmId}/verify`, {
     method: 'PATCH',
-    body: JSON.stringify({ verificado }),
+    body: JSON.stringify({ estado }),
   });
 }
 

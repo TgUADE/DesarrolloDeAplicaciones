@@ -43,6 +43,7 @@ export const adminAuctionController = {
         io.to(`auction:${req.params.id}`).emit('item:sold', {
           closedItemId: result.closedItemId,
           winnerId: result.purchase?.clienteId ?? null,
+          purchaseId: result.purchase?.identificador ?? null,
           nextItemId: result.nextItemId ?? null,
         });
       }

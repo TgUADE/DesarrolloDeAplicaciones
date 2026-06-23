@@ -7,7 +7,17 @@ import { Request } from 'express';
 
 const personaLiteSelect = { select: { identificador: true, nombre: true, app: { select: { apellido: true, email: true } } } } as const;
 
-type SubWithImages = { id: string; personaId: number; descripcion: string; datosHistoricos: string | null; images: { url: string; orden: number }[] };
+type SubWithImages = {
+  id: string;
+  personaId: number;
+  nombre: string | null;
+  descripcion: string;
+  artista: string | null;
+  fechaEpoca: string | null;
+  datosHistoricos: string | null;
+  moneda: string | null;
+  images: { url: string; orden: number }[];
+};
 
 /**
  * Materializa un Producto a partir de una solicitud aceptada: asegura el Duenio,
@@ -23,9 +33,10 @@ async function materializeProducto(sub: SubWithImages, base: number) {
     create: { identificador: sub.personaId, verificadorId: revisorId },
     update: {},
   });
+  const titulo = (sub.nombre?.trim() || sub.descripcion).slice(0, 300);
   const producto = await prisma.producto.create({
     data: {
-      descripcionCompleta: sub.descripcion.slice(0, 300),
+      descripcionCompleta: titulo,
       descripcionCatalogo: sub.descripcion.slice(0, 500),
       disponible: 'si',
       duenioId: sub.personaId,
@@ -34,8 +45,12 @@ async function materializeProducto(sub: SubWithImages, base: number) {
       app: {
         create: {
           numeroPieza: `PIEZA-${sub.id.slice(0, 10).toUpperCase()}`,
+          esObraDeArte: !!sub.artista?.trim(),
+          artista: sub.artista?.trim() || undefined,
+          fechaObra: sub.fechaEpoca?.trim() || undefined,
           historia: sub.datosHistoricos ?? undefined,
           status: 'disponible',
+          moneda: sub.moneda ?? 'ARS',
           deposito: 'Depósito Central',
           ubicacion: 'Estante por asignar',
           submissionId: sub.id,
@@ -50,24 +65,33 @@ export const submissionService = {
   async create(
     personaId: number,
     data: {
+      nombre?: string;
       descripcion: string;
+      artista?: string;
+      fechaEpoca?: string;
       datosHistoricos?: string;
       declaracionPropiedad: boolean;
       origenLicito: boolean;
       precioSugerido?: number;
+      moneda?: string;
       cuentaCobro?: string;
       images: string[];
     },
   ) {
     if (data.images.length < 6) throw { status: 400, message: 'Se requieren al menos 6 imágenes' };
+    if (data.moneda && !['ARS', 'USD'].includes(data.moneda)) throw { status: 400, message: 'Moneda inválida' };
     return prisma.itemSubmission.create({
       data: {
         personaId,
+        nombre: data.nombre,
         descripcion: data.descripcion,
+        artista: data.artista,
+        fechaEpoca: data.fechaEpoca,
         datosHistoricos: data.datosHistoricos,
         declaracionPropiedad: data.declaracionPropiedad,
         origenLicito: data.origenLicito,
         precioSugerido: data.precioSugerido != null ? data.precioSugerido : undefined,
+        moneda: data.moneda,
         cuentaCobro: data.cuentaCobro,
         images: { create: data.images.map((url, orden) => ({ url, orden })) },
       },

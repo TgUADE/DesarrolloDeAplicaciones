@@ -23,9 +23,11 @@ export const adminItemController = {
 
   async list(req: Request, res: Response) {
     try {
-      const { status } = req.query;
+      const { status, moneda } = req.query;
       const where: any = {};
       if (status) where.app = { status: String(status) };
+      // Filtrar por moneda del producto (para asignar solo a subastas de esa moneda).
+      if (moneda) where.app = { ...(where.app ?? {}), moneda: String(moneda) };
       // "disponible" para asignar = no está en ningún catálogo todavía.
       if (status === 'disponible') where.itemsCatalogo = { none: {} };
       const productos = await prisma.producto.findMany({

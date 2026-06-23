@@ -70,4 +70,9 @@ export const emailService = {
        <p>Tenés 72 horas para presentar los fondos de la oferta realizada.</p>`
     );
   },
+
+  /** Envía la factura de una compra (el HTML completo de la factura como cuerpo). */
+  async sendInvoice(to: string, facturaNro: string, html: string) {
+    await send(to, `Subastas - Factura ${facturaNro}`, html);
+  },
 };

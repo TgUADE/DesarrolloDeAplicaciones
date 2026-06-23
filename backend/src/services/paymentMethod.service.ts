@@ -1,6 +1,6 @@
 import { prisma } from '../config/prisma';
 
-const USD_TYPES = ['cuenta_bancaria_extranjera', 'tarjeta_credito_internacional'];
+const CARD_TYPES = ['tarjeta_credito_nacional', 'tarjeta_credito_internacional'];
 const PAYMENT_TYPES = [
   'cuenta_bancaria_nacional',
   'cuenta_bancaria_extranjera',
@@ -8,7 +8,8 @@ const PAYMENT_TYPES = [
   'tarjeta_credito_internacional',
   'cheque_certificado',
 ];
-const CURRENCIES = ['ARS', 'USD'];
+// 'AMBAS' solo aplica a tarjetas (cubren ARS y USD a la vez).
+const CURRENCIES = ['ARS', 'USD', 'AMBAS'];
 
 export const paymentMethodService = {
   async list(personaId: number) {
@@ -20,12 +21,12 @@ export const paymentMethodService = {
 
   /** Listado para el panel admin: todos los medios activos (filtrable por estado de
    *  verificación), con los datos del usuario dueño. Pendientes primero. */
-  async listForAdmin(verificado?: boolean) {
+  async listForAdmin(estado?: string) {
     const where: any = { activo: true };
-    if (verificado !== undefined) where.verificado = verificado;
+    if (estado) where.estado = estado;
     const pms = await prisma.paymentMethod.findMany({
       where,
-      orderBy: [{ verificado: 'asc' }, { createdAt: 'desc' }],
+      orderBy: [{ estado: 'asc' }, { createdAt: 'desc' }],
       include: { persona: { select: { identificador: true, nombre: true, app: { select: { apellido: true, email: true } } } } },
     });
     return pms.map((pm) => {
@@ -55,6 +56,10 @@ export const paymentMethodService = {
   ) {
     if (!PAYMENT_TYPES.includes(data.tipo)) throw { status: 400, message: 'Tipo de medio de pago inválido' };
     if (!CURRENCIES.includes(data.moneda)) throw { status: 400, message: 'Moneda inválida' };
+    const isCard = CARD_TYPES.includes(data.tipo);
+    if (data.moneda === 'AMBAS' && !isCard) throw { status: 400, message: 'Solo las tarjetas pueden cubrir ambas monedas' };
+    if (data.tipo === 'cuenta_bancaria_nacional' && data.moneda !== 'ARS') throw { status: 400, message: 'Una cuenta bancaria nacional debe ser en ARS' };
+    if (data.tipo === 'cuenta_bancaria_extranjera' && data.moneda !== 'USD') throw { status: 400, message: 'Una cuenta bancaria extranjera debe ser en USD' };
     if (!data.banco?.trim()) throw { status: 400, message: 'Banco es obligatorio' };
     if (data.tipo.startsWith('cuenta_bancaria') && !data.numeroCuenta?.trim()) {
       throw { status: 400, message: 'CBU/IBAN o número de cuenta es obligatorio' };
@@ -69,9 +74,6 @@ export const paymentMethodService = {
     }
     if (data.tipo === 'cheque_certificado' && (!data.montoGarantia || Number(data.montoGarantia) <= 0)) {
       throw { status: 400, message: 'El monto de garantía del cheque es obligatorio y debe ser mayor a cero' };
-    }
-    if (data.moneda === 'USD' && !USD_TYPES.includes(data.tipo) && data.tipo !== 'cheque_certificado') {
-      throw { status: 400, message: 'Tipo de medio de pago no compatible con USD' };
     }
     return prisma.paymentMethod.create({ data: { ...data, personaId } });
   },
@@ -106,7 +108,8 @@ export const paymentMethodService = {
     return prisma.paymentMethod.update({ where: { id }, data: { verificado } });
   },
 
-  isUsdCapable(tipo: string): boolean {
-    return USD_TYPES.includes(tipo);
+  /** Un medio de pago cubre una moneda si coincide, o si es de tipo 'AMBAS' (tarjetas). */
+  covers(monedaPm: string, target: string): boolean {
+    return monedaPm === target || monedaPm === 'AMBAS';
   },
 };
