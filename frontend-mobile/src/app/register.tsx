@@ -1,5 +1,5 @@
 import * as ImagePicker from 'expo-image-picker';
-import { readAsStringAsync } from 'expo-file-system/legacy';
+import { File } from 'expo-file-system';
 import { useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useState } from 'react';
@@ -69,8 +69,8 @@ export default function RegisterStep1() {
     setLoading(true);
     try {
       const [docFrenteBase64, docDorsoBase64] = await Promise.all([
-        readAsStringAsync(docFrente, { encoding: 'base64' }),
-        readAsStringAsync(docDorso, { encoding: 'base64' }),
+        new File(docFrente).base64(),
+        new File(docDorso).base64(),
       ]);
       await register({
         nombre: cleanNombre,
