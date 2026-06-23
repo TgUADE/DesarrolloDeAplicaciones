@@ -38,12 +38,17 @@ export const userService = {
   },
 
   async getMetrics(personaId: number) {
-    const [participaciones, victorias, pujos] = await Promise.all([
+    const [participaciones, victorias, pujos, pujosPorSubasta] = await Promise.all([
       prisma.asistente.count({ where: { clienteId: personaId } }),
       prisma.registroDeSubasta.count({ where: { clienteId: personaId, app: { status: 'pagado' } } }),
       prisma.pujo.findMany({
         where: { asistente: { clienteId: personaId }, app: { confirmada: true } },
-        select: { importe: true, app: { select: { moneda: true } } },
+        select: { importe: true, app: { select: { moneda: true } }, asistente: { select: { subasta: { select: { categoria: true } } } } },
+      }),
+      prisma.pujo.groupBy({
+        by: ['asistenteId'],
+        where: { asistente: { clienteId: personaId }, app: { confirmada: true } },
+        _count: { _all: true },
       }),
     ]);
 
@@ -52,16 +57,20 @@ export const userService = {
       select: { importe: true, comision: true, app: { select: { moneda: true } } },
     });
 
-    const totalPagadoARS = registros
-      .filter((r) => r.app?.moneda === 'ARS')
-      .reduce((s, r) => s + Number(r.importe) + Number(r.comision), 0);
-    const totalPagadoUSD = registros
-      .filter((r) => r.app?.moneda === 'USD')
-      .reduce((s, r) => s + Number(r.importe) + Number(r.comision), 0);
+    const totalPagadoARS = registros.filter((r) => r.app?.moneda === 'ARS').reduce((s, r) => s + Number(r.importe) + Number(r.comision), 0);
+    const totalPagadoUSD = registros.filter((r) => r.app?.moneda === 'USD').reduce((s, r) => s + Number(r.importe) + Number(r.comision), 0);
     const totalOfertadoARS = pujos.filter((b) => b.app?.moneda === 'ARS').reduce((s, b) => s + Number(b.importe), 0);
     const totalOfertadoUSD = pujos.filter((b) => b.app?.moneda === 'USD').reduce((s, b) => s + Number(b.importe), 0);
+    const totalPujos = pujos.length;
 
-    return { totalParticipaciones: participaciones, totalVictorias: victorias, totalPagadoARS, totalPagadoUSD, totalOfertadoARS, totalOfertadoUSD };
+    const catCount: Record<string, number> = {};
+    for (const p of pujos) {
+      const cat = p.asistente?.subasta?.categoria ?? 'comun';
+      catCount[cat] = (catCount[cat] ?? 0) + 1;
+    }
+    const pujosPorCategoria = Object.entries(catCount).map(([categoria, cantidad]) => ({ categoria, cantidad }));
+
+    return { totalParticipaciones: participaciones, totalVictorias: victorias, totalPujos, totalPagadoARS, totalPagadoUSD, totalOfertadoARS, totalOfertadoUSD, pujosPorCategoria };
   },
 
   async getAuctionHistory(personaId: number, req: Request) {
