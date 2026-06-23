@@ -1,3 +1,4 @@
+import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useRef, useState } from 'react';
@@ -34,6 +35,7 @@ import { Brand, FontSize, FontWeight, Radius, space } from '@/constants/theme';
 import { calcMaxBid, calcMinBid } from '@/utils/bid-limits';
 import { getApiErrorMessage } from '@/utils/errors';
 import { formatCountdown, formatDate, formatMoney } from '@/utils/format';
+import { imageUrl } from '@/utils/media';
 
 export default function SubastaEnVivo() {
   const router = useRouter();
@@ -84,6 +86,7 @@ export default function SubastaEnVivo() {
   const min = item ? calcMinBid(precioBase, ultimaOferta, categoria) : 0;
   const max = item ? calcMaxBid(precioBase, ultimaOferta, categoria) : null;
   const moneda = auction?.moneda ?? '';
+  const cover = imageUrl(item?.images?.[0]?.url);
   const isTopBidder = bids.length > 0 && (bids[0].userId ?? bids[0].user?.id) === userId;
   // El dueño no puede pujar por su propio ítem.
   const isOwnItem = !!item?.currentOwner?.id && !!userId && String(item.currentOwner.id) === userId;
@@ -308,14 +311,19 @@ export default function SubastaEnVivo() {
         </View>
         {item ? (
           <View style={styles.pieceBox}>
-            <Text style={styles.pieceLabel}>Pieza actual #{item.numeroPieza}</Text>
-            <Text style={styles.pieceTitle} numberOfLines={1}>
-              {item.descripcion}
-            </Text>
-            <Text style={styles.pieceMeta}>
-              {auction?.titulo}
-              {item.precioBase != null ? ` · Base: ${formatMoney(item.precioBase, moneda)}` : ''}
-            </Text>
+            {cover ? (
+              <Image source={{ uri: cover }} style={styles.pieceThumb} contentFit="cover" transition={150} />
+            ) : null}
+            <View style={styles.pieceTextCol}>
+              <Text style={styles.pieceLabel}>Pieza actual #{item.numeroPieza}</Text>
+              <Text style={styles.pieceTitle} numberOfLines={1}>
+                {item.descripcion}
+              </Text>
+              <Text style={styles.pieceMeta} numberOfLines={1}>
+                {auction?.titulo}
+                {item.precioBase != null ? ` · Base: ${formatMoney(item.precioBase, moneda)}` : ''}
+              </Text>
+            </View>
           </View>
         ) : null}
       </View>
@@ -492,7 +500,9 @@ const styles = StyleSheet.create({
   headerTop: { flexDirection: 'row', alignItems: 'center', gap: space.sm },
   back: { color: '#fff', fontSize: 24, fontWeight: FontWeight.bold },
   headerTitle: { flex: 1, color: '#fff', fontSize: FontSize.base, fontWeight: FontWeight.bold },
-  pieceBox: { marginTop: space.md, backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: Radius.md, padding: space.md },
+  pieceBox: { marginTop: space.md, flexDirection: 'row', alignItems: 'center', gap: space.md, backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: Radius.md, padding: space.md },
+  pieceThumb: { width: 56, height: 56, borderRadius: Radius.sm, backgroundColor: 'rgba(255,255,255,0.15)' },
+  pieceTextCol: { flex: 1 },
   pieceLabel: { fontSize: FontSize.xs, color: 'rgba(255,255,255,0.6)' },
   pieceTitle: { fontSize: FontSize.base, fontWeight: FontWeight.medium, color: '#fff', marginTop: 2 },
   pieceMeta: { fontSize: FontSize.xs, color: 'rgba(255,255,255,0.5)', marginTop: 2 },

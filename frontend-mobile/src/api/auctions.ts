@@ -55,6 +55,9 @@ export interface Item {
   descripcionElementos: string | null;
   images: ItemImage[];
   currentOwner?: { id: string; nombre: string; apellido: string };
+  /** True si ESTE ítem es el que se está subastando ahora (subasta abierta + es el actual). */
+  isCurrent?: boolean;
+  auctionStatus?: string | null; // estado de la subasta: programada | abierta | cerrada | finalizada
 }
 
 export interface ListAuctionsParams {
