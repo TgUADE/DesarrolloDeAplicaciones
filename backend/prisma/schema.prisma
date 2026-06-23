@@ -84,6 +84,7 @@ model Seguro {
   polizaCombinada String? @db.VarChar(2)
   importe         Decimal @db.Decimal(18, 2)
 
+  app       SeguroApp?
   productos Producto[]
 
   @@map("seguros")
@@ -118,6 +119,7 @@ model Duenio {
 
   productos Producto[]
   registros RegistroDeSubasta[] @relation("RegistroDuenio")
+  seguros   SeguroApp[]         @relation("DuenioSeguros")
 
   @@map("duenios")
 }
@@ -393,6 +395,20 @@ model FotoApp {
   orden  Int     @default(0)
 
   @@map("fotos_app")
+}
+
+// Extensión de `seguros`: vincula cada póliza a su dueño. La regla de negocio es
+// "una póliza por dueño"; como la tabla core `seguros` debe quedar EXACTA al SQL
+// legacy, el dueño se modela acá (1:1 con la póliza) en vez de agregar columnas.
+model SeguroApp {
+  nroPoliza String   @id @map("nro_poliza") @db.VarChar(30)
+  seguro    Seguro   @relation(fields: [nroPoliza], references: [nroPoliza], onDelete: Cascade)
+  duenioId  Int      @map("duenio_id")
+  duenio    Duenio   @relation("DuenioSeguros", fields: [duenioId], references: [identificador])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("seguros_app")
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

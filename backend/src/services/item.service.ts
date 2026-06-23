@@ -96,14 +96,34 @@ export const itemService = {
  * y la asocia al producto (`nroPoliza`). Pobla la tabla legacy `seguros`.
  * La consigna: a cada bien recibido se le contrata un seguro según el valor base.
  */
-export async function ensureSeguro(productoId: number, baseValue: number, compania = 'La Subastadora Seguros S.A.') {
-  const nroPoliza = `POL-${productoId}`;
-  const importe = Math.max(1, Math.round(Number(baseValue)));
-  await prisma.seguro.upsert({
+export async function ensureSeguro(productoId: number, baseValue: number, duenioId: number, compania = 'La Subastadora Seguros S.A.') {
+  // Una póliza por dueño: todos los productos del mismo dueño comparten la misma póliza.
+  const nroPoliza = `POL-DUENIO-${duenioId}`;
+  const importeNuevo = Math.max(1, Math.round(Number(baseValue)));
+
+  const existing = await prisma.seguro.findUnique({ where: { nroPoliza } });
+  if (existing) {
+    await prisma.seguro.update({
+      where: { nroPoliza },
+      data: {
+        importe: Number(existing.importe) + importeNuevo,
+        compania,
+        polizaCombinada: 'si',
+      },
+    });
+  } else {
+    await prisma.seguro.create({
+      data: { nroPoliza, compania, importe: importeNuevo, polizaCombinada: 'no' },
+    });
+  }
+
+  // Vincula la póliza con su dueño en la tabla de extensión (idempotente).
+  await prisma.seguroApp.upsert({
     where: { nroPoliza },
-    create: { nroPoliza, compania, importe, polizaCombinada: 'no' },
-    update: { importe, compania },
+    create: { nroPoliza, duenioId },
+    update: { duenioId },
   });
+
   await prisma.producto.update({ where: { identificador: productoId }, data: { nroPoliza } });
   return nroPoliza;
 }

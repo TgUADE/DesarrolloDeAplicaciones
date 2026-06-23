@@ -14,6 +14,7 @@ import adminAuctionRoutes from './admin/adminAuction.routes';
 import adminSubmissionRoutes from './admin/adminSubmission.routes';
 import adminItemRoutes from './admin/adminItem.routes';
 import adminPurchaseRoutes from './admin/adminPurchase.routes';
+import adminSeguroRoutes from './admin/adminSeguro.routes';
 
 const router = Router();
 
@@ -31,5 +32,6 @@ router.use('/admin', verifyToken, requireAdmin, adminAuctionRoutes);
 router.use('/admin', verifyToken, requireAdmin, adminSubmissionRoutes);
 router.use('/admin', verifyToken, requireAdmin, adminItemRoutes);
 router.use('/admin', verifyToken, requireAdmin, adminPurchaseRoutes);
+router.use('/admin', verifyToken, requireAdmin, adminSeguroRoutes);
 
 export default router;

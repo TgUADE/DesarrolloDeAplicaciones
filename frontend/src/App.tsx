@@ -8,6 +8,7 @@ import PaymentMethods from './pages/PaymentMethods';
 import Duenios from './pages/Duenios';
 import Auctions from './pages/Auctions';
 import Purchases from './pages/Purchases';
+import Seguros from './pages/Seguros';
 import { getStoredUser, getUsers, getSubmissions, getPaymentMethods } from './api';
 
 export default function App() {
@@ -53,6 +54,7 @@ export default function App() {
         <Route path="duenios" element={<Duenios />} />
         <Route path="auctions" element={<Auctions />} />
         <Route path="purchases" element={<Purchases />} />
+        <Route path="seguros" element={<Seguros />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
