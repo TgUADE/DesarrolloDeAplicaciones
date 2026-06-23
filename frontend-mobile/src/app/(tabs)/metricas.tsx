@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { StatusBar } from 'expo-status-bar';
 
 import client from '@/api/client';
 import { getStoredUser } from '@/api/auth';
@@ -34,6 +35,13 @@ const CATEGORY_LABEL: Record<string, string> = {
   platino: 'Platino',
 };
 
+const CATEGORY_COLOR: Record<string, string> = {
+  comun: '#4A90D9',
+  especial: '#7B61FF',
+  oro: '#F5A623',
+  platino: '#50C878',
+};
+
 export default function Metricas() {
   const insets = useSafeAreaInsets();
   const [metrics, setMetrics] = useState<Metrics | null>(null);
@@ -62,26 +70,41 @@ export default function Metricas() {
 
   if (loading) {
     return (
-      <View style={styles.center}>
-        <ActivityIndicator color={Brand.primary} />
+      <View style={styles.root}>
+        <StatusBar style="light" />
+        <View style={[styles.header, { paddingTop: insets.top + space.sm }]}>
+          <Text style={styles.headerTitle}>Métricas</Text>
+        </View>
+        <View style={styles.center}>
+          <ActivityIndicator color={Brand.primary} />
+        </View>
       </View>
     );
   }
 
   if (error) {
     return (
-      <View style={styles.center}>
-        <Text style={styles.errorText}>{error}</Text>
+      <View style={styles.root}>
+        <StatusBar style="light" />
+        <View style={[styles.header, { paddingTop: insets.top + space.sm }]}>
+          <Text style={styles.headerTitle}>Métricas</Text>
+        </View>
+        <View style={styles.center}>
+          <Text style={styles.errorText}>{error}</Text>
+        </View>
       </View>
     );
   }
 
   return (
+    <View style={styles.root}>
+      <StatusBar style="light" />
+      <View style={[styles.header, { paddingTop: insets.top + space.sm }]}>
+        <Text style={styles.headerTitle}>Métricas</Text>
+      </View>
     <ScrollView
-      style={styles.root}
-      contentContainerStyle={[styles.content, { paddingTop: insets.top + space.lg }]}
+      contentContainerStyle={styles.content}
       showsVerticalScrollIndicator={false}>
-      <Text style={styles.pageTitle}>Métricas</Text>
 
       {/* ── Sección Métrica ── */}
       <Text style={styles.sectionLabel}>Métrica</Text>
@@ -113,23 +136,20 @@ export default function Metricas() {
         )}
       </View>
 
-      {/* ── Sección Actividades ── */}
-      <Text style={styles.sectionLabel}>Actividades</Text>
+      {/* ── Gráfico ── */}
+      <Text style={styles.sectionLabel}>Pujas por categoría</Text>
       <View style={styles.card}>
-        <Text style={styles.activityTitle}>Pujas por categoría</Text>
         {(metrics?.pujosPorCategoria ?? []).length === 0 ? (
           <Text style={styles.muted}>Sin actividad aún.</Text>
         ) : (
-          metrics!.pujosPorCategoria.map((item) => (
-            <View key={item.categoria} style={styles.categoryRow}>
-              <Text style={styles.categoryLabel}>{CATEGORY_LABEL[item.categoria] ?? item.categoria}</Text>
-              <Text style={styles.categoryCount}>{item.cantidad} puja{item.cantidad !== 1 ? 's' : ''}</Text>
-            </View>
-          ))
+          <BarChart data={metrics!.pujosPorCategoria} />
         )}
+      </View>
 
-        <Divider />
-        <Text style={[styles.activityTitle, { marginTop: space.sm }]}>Subastas en que participé</Text>
+      {/* ── Sección Actividades ── */}
+      <Text style={styles.sectionLabel}>Actividades</Text>
+      <View style={styles.card}>
+        <Text style={styles.activityTitle}>Subastas en que participé</Text>
         {history.length === 0 ? (
           <Text style={styles.muted}>Todavía no participaste en ninguna subasta.</Text>
         ) : (
@@ -152,8 +172,40 @@ export default function Metricas() {
 
       <View style={{ height: space.xl }} />
     </ScrollView>
+    </View>
   );
 }
+
+function BarChart({ data }: { data: { categoria: string; cantidad: number }[] }) {
+  const max = Math.max(...data.map((d) => d.cantidad), 1);
+  return (
+    <View style={{ gap: 10 }}>
+      {data.map((item) => {
+        const pct = item.cantidad / max;
+        const color = CATEGORY_COLOR[item.categoria] ?? Brand.primary;
+        return (
+          <View key={item.categoria}>
+            <View style={chartStyles.row}>
+              <Text style={chartStyles.label}>{CATEGORY_LABEL[item.categoria] ?? item.categoria}</Text>
+              <Text style={[chartStyles.count, { color }]}>{item.cantidad}</Text>
+            </View>
+            <View style={chartStyles.track}>
+              <View style={[chartStyles.bar, { width: `${Math.round(pct * 100)}%` as any, backgroundColor: color }]} />
+            </View>
+          </View>
+        );
+      })}
+    </View>
+  );
+}
+
+const chartStyles = StyleSheet.create({
+  row: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 },
+  label: { fontSize: FontSize.sm, color: Brand.text },
+  count: { fontSize: FontSize.sm, fontWeight: FontWeight.bold },
+  track: { height: 8, backgroundColor: Brand.border, borderRadius: 4, overflow: 'hidden' },
+  bar: { height: 8, borderRadius: 4 },
+});
 
 function StatRow({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
   return (
@@ -170,16 +222,21 @@ function Divider() {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: Brand.pageBg },
-  content: { paddingHorizontal: space.lg, paddingBottom: space.xl },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: Brand.pageBg },
-  errorText: { color: Brand.danger, fontSize: FontSize.sm, textAlign: 'center' },
-
-  pageTitle: {
+  header: {
+    backgroundColor: Brand.primary,
+    paddingHorizontal: space.lg,
+    paddingBottom: space.lg,
+    borderBottomLeftRadius: Radius.lg,
+    borderBottomRightRadius: Radius.lg,
+  },
+  headerTitle: {
     fontSize: FontSize.xl,
     fontWeight: FontWeight.bold,
-    color: Brand.text,
-    marginBottom: space.lg,
+    color: '#fff',
   },
+  content: { paddingHorizontal: space.lg, paddingTop: space.lg, paddingBottom: space.xl },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  errorText: { color: Brand.danger, fontSize: FontSize.sm, textAlign: 'center' },
   sectionLabel: {
     fontSize: FontSize.sm,
     fontWeight: FontWeight.medium,
