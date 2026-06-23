@@ -243,8 +243,12 @@ export const auctionService = {
       const pendingBid = await tx.pujo.findFirst({ where: { asistenteId: asistente.identificador, itemId: currentItemId, app: { confirmada: false } } });
       if (pendingBid) throw { status: 409, message: 'Ya tenés una puja pendiente de confirmación' };
 
-      const lastBid = await tx.pujo.findFirst({ where: { itemId: currentItemId, app: { confirmada: true } }, orderBy: { app: { createdAt: 'desc' } } });
+      const lastBid = await tx.pujo.findFirst({ where: { itemId: currentItemId, app: { confirmada: true } }, orderBy: { app: { createdAt: 'desc' } }, include: { asistente: true } });
       const ultimaOferta = Number(lastBid?.importe ?? itemCatalogo.precioBase);
+
+      if (lastBid && lastBid.asistente.clienteId === personaId) {
+        throw { status: 409, message: 'Ya sos el mejor postor. Esperá que alguien más puje.' };
+      }
 
       const validation = validateBidAmount(monto, Number(itemCatalogo.precioBase), ultimaOferta, subasta!.categoria ?? 'comun');
       if (!validation.valid) throw { status: 422, message: validation.error };

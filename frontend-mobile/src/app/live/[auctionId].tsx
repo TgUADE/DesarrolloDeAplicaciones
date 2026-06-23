@@ -84,6 +84,7 @@ export default function SubastaEnVivo() {
   const min = item ? calcMinBid(precioBase, ultimaOferta, categoria) : 0;
   const max = item ? calcMaxBid(precioBase, ultimaOferta, categoria) : null;
   const moneda = auction?.moneda ?? '';
+  const isTopBidder = bids.length > 0 && (bids[0].userId ?? bids[0].user?.id) === userId;
 
   useEffect(() => {
     if (!auctionId) return;
@@ -389,7 +390,7 @@ export default function SubastaEnVivo() {
               placeholder={String(Math.ceil(min))}
               placeholderTextColor={Brand.placeholder}
               keyboardType="number-pad"
-              editable={canBid && !placing}
+              editable={canBid && !placing && !isTopBidder}
             />
           </View>
           <View style={styles.quickRow}>
@@ -402,8 +403,8 @@ export default function SubastaEnVivo() {
               <Pressable
                 key={q.label}
                 onPress={() => setQuick(q.v)}
-                disabled={!canBid}
-                style={[styles.quick, !canBid && styles.dim]}>
+                disabled={!canBid || isTopBidder}
+                style={[styles.quick, (!canBid || isTopBidder) && styles.dim]}>
                 <Text style={styles.quickText}>{q.label}</Text>
               </Pressable>
             ))}
@@ -411,7 +412,11 @@ export default function SubastaEnVivo() {
 
           {bidError ? <Text style={styles.bidError}>{bidError}</Text> : null}
 
-          {!canBid && bidNotice ? (
+          {isTopBidder ? (
+            <View style={styles.pmNotice}>
+              <Text style={styles.pmNoticeText}>Sos el mejor postor. Esperá que alguien más puje.</Text>
+            </View>
+          ) : !canBid && bidNotice ? (
             <View style={styles.pmNotice}>
               <Text style={styles.pmNoticeText}>ℹ️ {bidNotice}</Text>
             </View>
@@ -419,13 +424,13 @@ export default function SubastaEnVivo() {
 
           <Pressable
             onPress={submitBid}
-            disabled={!canBid || placing}
-            style={({ pressed }) => [styles.bidBtn, (!canBid || pressed || placing) && styles.dim]}>
+            disabled={!canBid || placing || isTopBidder}
+            style={({ pressed }) => [styles.bidBtn, (!canBid || pressed || placing || isTopBidder) && styles.dim]}>
             {placing ? (
               <ActivityIndicator color="#fff" />
             ) : (
               <Text style={styles.bidBtnText}>
-                {canBid ? `Pujar ${monto ? formatMoney(Number(monto), moneda) : ''}`.trim() : 'No podés pujar'}
+                {isTopBidder ? 'Mejor postor' : canBid ? `Pujar ${monto ? formatMoney(Number(monto), moneda) : ''}`.trim() : 'No podés pujar'}
               </Text>
             )}
           </Pressable>

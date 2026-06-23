@@ -52,7 +52,7 @@ export const authService = {
     });
     return prisma.persona.findUniqueOrThrow({
       where: { identificador: app.personaId },
-      include: { app: true },
+      include: { app: true, cliente: true },
     });
   },
 

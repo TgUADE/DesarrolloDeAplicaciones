@@ -66,7 +66,7 @@ export const authController = {
       res.cookie('refreshToken', refreshToken, { httpOnly: true, secure: env.NODE_ENV === 'production', sameSite: 'strict', maxAge: 7 * 24 * 60 * 60 * 1000 });
       return ok(res, {
         accessToken,
-        user: { id: persona.identificador.toString(), nombre: persona.nombre, apellido: persona.app?.apellido ?? '', email: persona.app?.email ?? null, status: persona.app?.registrationStatus ?? 'aprobado', isAdmin: persona.app?.isAdmin ?? false },
+        user: { id: persona.identificador.toString(), nombre: persona.nombre, apellido: persona.app?.apellido ?? '', email: persona.app?.email ?? null, categoria: persona.cliente?.categoria ?? 'comun', status: persona.app?.registrationStatus ?? 'aprobado', isAdmin: persona.app?.isAdmin ?? false },
       });
     } catch (err: any) {
       return res.status(err.status || 500).json({ success: false, error: err.message });
