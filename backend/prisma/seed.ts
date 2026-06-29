@@ -220,7 +220,7 @@ async function seedAuction(args: {
   if (args.liveItemIndex != null && itemIds[args.liveItemIndex] != null) {
     await prisma.subasta.update({
       where: { identificador: args.id },
-      data: { app: { update: { currentItemId: itemIds[args.liveItemIndex], currentItemEndsAt: new Date(Date.now() + 60 * 60 * 1000) } } },
+      data: { app: { update: { currentItemId: itemIds[args.liveItemIndex], currentItemEndsAt: new Date(Date.now() + 1 * 60 * 1000) } } },
     });
   }
   console.log(`✅ Subasta #${args.id} "${args.titulo}" (${args.estado}) · ${args.productos.length} piezas`);

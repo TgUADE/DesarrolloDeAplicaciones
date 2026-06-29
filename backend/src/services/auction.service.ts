@@ -23,7 +23,7 @@ const itemDetailInclude = {
 } as const;
 import { Request } from 'express';
 
-export const ITEM_TIMER_MS = 60 * 60 * 1000;
+export const ITEM_TIMER_MS = 1 * 60 * 1000;
 const PURCHASE_COMMISSION_RATE = 0.05;
 const PURCHASE_SHIPPING_RATE = 0.02;
 const BLOCKING_PURCHASE_STATUSES = ['derivado_justicia'];

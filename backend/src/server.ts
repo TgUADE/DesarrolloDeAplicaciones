@@ -23,7 +23,7 @@ cron.schedule('0 * * * *', async () => {
   }
 });
 
-// Cierre automático de ítems cuyo temporizador (5 min desde la última puja) venció.
+// Cierre automático de ítems cuyo temporizador (1 min desde la última puja) venció.
 setInterval(async () => {
   try {
     const closed = await auctionService.autoCloseExpiredItems();
