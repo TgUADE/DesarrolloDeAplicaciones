@@ -125,7 +125,14 @@ export default function SubastaEnVivo() {
         // El medio de pago debe cubrir la moneda de la subasta (o ser una tarjeta "AMBAS").
         const covers = (m: string) => m === a.moneda || m === 'AMBAS';
         const amountOf = (p: PaymentMethod) => Number(p.montoDisponible ?? p.montoGarantia ?? 0);
-        const compatibles = verified.filter((p) => covers(p.moneda) && amountOf(p) > 0);
+        const verifiedBeforeStart = (p: PaymentMethod) => {
+          if (p.tipo !== 'cheque_certificado') return true;
+          const approvedAt = p.verifiedAt ?? p.updatedAt;
+          if (!approvedAt) return false;
+          return new Date(approvedAt).getTime() < new Date(a.fechaHora).getTime();
+        };
+        const compatiblesPorMoneda = verified.filter((p) => covers(p.moneda) && amountOf(p) > 0);
+        const compatibles = compatiblesPorMoneda.filter(verifiedBeforeStart);
         const usable = compatibles[0];
         setPaymentMethods(compatibles);
         setPmId(usable?.id ?? null);
@@ -136,7 +143,12 @@ export default function SubastaEnVivo() {
         } else if (verified.length === 0) {
           setBidNotice('Tu medio de pago está pendiente de verificación. Vas a poder pujar cuando la empresa lo apruebe.');
         } else if (!usable) {
-          setBidNotice(`Esta subasta es en ${a.moneda}: necesitás un medio de pago aprobado, con monto declarado, en ${a.moneda} (o una tarjeta que cubra ambas monedas).`);
+          const hasLateCheck = compatiblesPorMoneda.some((p) => p.tipo === 'cheque_certificado' && !verifiedBeforeStart(p));
+          setBidNotice(
+            hasLateCheck
+              ? 'El cheque certificado debe estar aprobado antes del inicio de la subasta para poder pujar.'
+              : `Esta subasta es en ${a.moneda}: necesitás un medio de pago aprobado, con monto declarado, en ${a.moneda} (o una tarjeta que cubra ambas monedas).`,
+          );
         } else {
           setBidNotice('');
         }

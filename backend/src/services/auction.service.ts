@@ -37,6 +37,32 @@ function paymentMethodAvailableAmount(pm: { montoDisponible?: unknown; montoGara
   return Number(pm?.montoDisponible ?? pm?.montoGarantia ?? 0);
 }
 
+function auctionStartAt(subasta: { app?: { fechaHora?: Date | null } | null; fecha?: Date | null; hora?: Date | null }): Date | null {
+  return subasta.app?.fechaHora ?? subasta.fecha ?? subasta.hora ?? null;
+}
+
+function certifiedCheckWasVerifiedBeforeAuction(
+  pm: { tipo: string; verifiedAt?: Date | null; updatedAt?: Date | null },
+  subasta: { app?: { fechaHora?: Date | null } | null; fecha?: Date | null; hora?: Date | null },
+): boolean {
+  if (pm.tipo !== 'cheque_certificado') return true;
+  const startAt = auctionStartAt(subasta);
+  const approvedAt = pm.verifiedAt ?? pm.updatedAt ?? null;
+  return !!startAt && !!approvedAt && approvedAt.getTime() < startAt.getTime();
+}
+
+function assertCertifiedCheckWasVerifiedBeforeAuction(
+  pm: { tipo: string; verifiedAt?: Date | null; updatedAt?: Date | null },
+  subasta: { app?: { fechaHora?: Date | null } | null; fecha?: Date | null; hora?: Date | null },
+) {
+  if (pm.tipo !== 'cheque_certificado') return;
+  const startAt = auctionStartAt(subasta);
+  if (!startAt) throw { status: 400, message: 'No se puede validar el inicio de la subasta para usar este cheque certificado' };
+  if (!certifiedCheckWasVerifiedBeforeAuction(pm, subasta)) {
+    throw { status: 403, message: 'El cheque certificado debe estar aprobado antes del inicio de la subasta' };
+  }
+}
+
 async function getPendingPaymentMethodCommitment(tx: any, personaId: number, paymentMethodId: string, moneda: string): Promise<number> {
   const comprasPendientes = await tx.registroDeSubasta.findMany({
     where: {
@@ -241,7 +267,7 @@ export const auctionService = {
     });
 
     const auctionMoneda = subasta.app?.moneda ?? 'ARS';
-    return { canBid: persona.paymentMethods.some((pm) => paymentMethodService.covers(pm.moneda, auctionMoneda)) };
+    return { canBid: persona.paymentMethods.some((pm) => paymentMethodService.covers(pm.moneda, auctionMoneda) && certifiedCheckWasVerifiedBeforeAuction(pm, subasta)) };
   },
 
   async leave(subastaId: number, userId: string) {
@@ -288,6 +314,7 @@ export const auctionService = {
       if (paymentMethodAvailableAmount(pm) <= 0) {
         throw { status: 400, message: 'El medio de pago no tiene monto disponible declarado' };
       }
+      assertCertifiedCheckWasVerifiedBeforeAuction(pm, subasta!);
 
       // Si el monto disponible no alcanza, la puja se permite. Si gana, la compra
       // se registra con multa del 10% al cerrar el ítem.

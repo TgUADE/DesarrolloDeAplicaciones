@@ -134,7 +134,11 @@ export const adminUserController = {
       }
       const pm = await prisma.paymentMethod.update({
         where: { id: req.params.pmId },
-        data: { estado: nuevoEstado, verificado: nuevoEstado === 'aprobada' },
+        data: {
+          estado: nuevoEstado,
+          verificado: nuevoEstado === 'aprobada',
+          verifiedAt: nuevoEstado === 'aprobada' ? new Date() : null,
+        },
       });
       return ok(res, pm);
     } catch (err: any) { return serverError(res, err.message); }

@@ -115,7 +115,7 @@ export const paymentMethodService = {
   async verify(id: string, verificado: boolean) {
     const pm = await prisma.paymentMethod.findUnique({ where: { id } });
     if (!pm) throw { status: 404, message: 'Medio de pago no encontrado' };
-    return prisma.paymentMethod.update({ where: { id }, data: { verificado } });
+    return prisma.paymentMethod.update({ where: { id }, data: { verificado, verifiedAt: verificado ? new Date() : null } });
   },
 
   /** Un medio de pago cubre una moneda si coincide, o si es de tipo 'AMBAS' (tarjetas). */

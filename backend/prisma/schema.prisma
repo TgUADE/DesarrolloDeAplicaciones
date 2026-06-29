@@ -476,6 +476,7 @@ model PaymentMethod {
   montoGarantia  Decimal? @db.Decimal(12, 2)
   montoDisponible Decimal? @db.Decimal(18, 2)
   verificado     Boolean  @default(false)
+  verifiedAt     DateTime?
   estado         String   @default("pendiente") @db.VarChar(20)
   activo         Boolean  @default(true)
   createdAt      DateTime @default(now())

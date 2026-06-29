@@ -41,7 +41,7 @@ const options: swaggerJsdoc.Options = {
 - Para pujar: usuario aprobado + categoría ≥ categoría subasta + al menos 1 medio de pago verificado
 - Rango de puja (NO aplica a oro/platino): mín = última oferta + 1% precio base; máx = última oferta + 20% precio base
 - Solo 1 subasta activa por usuario a la vez
-- Subastas en USD: requieren tarjeta internacional o cuenta bancaria extranjera con moneda USD
+- Subastas en USD: requieren un medio de pago compatible con USD. Cheques certificados: deben estar aprobados antes del inicio de la subasta
 - Si nadie puja un ítem: la empresa lo compra al precio base
 - Incumplimiento de pago: multa 10% → 72h para pagar → bloqueo + derivación a justicia`,
     },
@@ -100,6 +100,7 @@ const options: swaggerJsdoc.Options = {
             montoGarantia: { type: 'number', nullable: true, description: 'Garantía del cheque certificado' },
             montoDisponible: { type: 'number', nullable: true, description: 'Monto disponible/reservado declarado para este medio de pago' },
             verificado: { type: 'boolean' },
+            verifiedAt: { type: 'string', format: 'date-time', nullable: true, description: 'Fecha en que la empresa aprobó el medio. Para cheque certificado debe ser anterior al inicio de la subasta.' },
             activo: { type: 'boolean' },
           },
         },
@@ -519,7 +520,7 @@ const options: swaggerJsdoc.Options = {
         post: {
           tags: ['Medios de Pago'],
           summary: 'Agregar medio de pago',
-          description: 'Se agrega en estado no verificado. Un admin debe verificarlo antes de que el usuario pueda pujar. Subastas en USD requieren tarjeta internacional o cuenta bancaria extranjera con moneda USD. Todos los medios requieren montoDisponible. El cheque certificado usa ese monto también como garantía y debe verificarse antes del inicio de la subasta.',
+          description: 'Se agrega en estado no verificado. Un admin debe verificarlo antes de que el usuario pueda pujar. Todos los medios requieren montoDisponible. El cheque certificado usa ese monto también como garantía y debe aprobarse antes del inicio de la subasta.',
           parameters: [idParam()],
           requestBody: jsonBody({
             type: 'object',
@@ -665,7 +666,8 @@ const options: swaggerJsdoc.Options = {
 **Validaciones aplicadas:**
 - Usuario con status \`aprobado\` y conectado a esta subasta
 - Al menos un medio de pago verificado
-- Subasta en USD → el medio debe ser tarjeta_credito_internacional o cuenta_bancaria_extranjera con moneda USD
+- Subasta en USD → el medio debe cubrir USD
+- Cheque certificado → debe estar aprobado antes del inicio de la subasta
 - Si el medio elegido no cubre el total estimado, la puja se permite y, si gana, la compra queda con multa del 10%
 - Rango de puja (NO aplica a subastas oro/platino):
   - Mínimo = última oferta + 1% × precio base
@@ -982,7 +984,7 @@ Al confirmar, emite evento \`bid:new\` por WebSocket a todos los conectados.`,
         patch: {
           tags: ['Admin - Usuarios'],
           summary: '[ADMIN] Verificar o desverificar un medio de pago',
-          description: 'Solo los medios verificados permiten pujar. El cheque certificado debe verificarse ANTES del inicio de la subasta.',
+          description: 'Solo los medios verificados permiten pujar. Al aprobar un medio se guarda verifiedAt. El cheque certificado debe aprobarse ANTES del inicio de la subasta.',
           parameters: [idParam(), idParam('pmId')],
           requestBody: jsonBody({
             type: 'object',

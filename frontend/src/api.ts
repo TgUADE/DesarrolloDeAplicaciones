@@ -357,6 +357,8 @@ export interface AdminPaymentMethod {
   montoDisponible?: number | string | null;
   estado: string; // pendiente | aprobada | rechazada
   verificado: boolean;
+  verifiedAt?: string | null;
+  updatedAt?: string | null;
   activo: boolean;
   createdAt: string;
   persona?: { id: string; nombre: string; apellido: string; email: string | null } | null;

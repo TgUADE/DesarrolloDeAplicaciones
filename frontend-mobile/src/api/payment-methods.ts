@@ -30,6 +30,8 @@ export interface PaymentMethod {
   moneda: 'ARS' | 'USD' | 'AMBAS';
   estado: 'pendiente' | 'aprobada' | 'rechazada';
   verificado: boolean;
+  verifiedAt?: string | null;
+  updatedAt?: string | null;
   activo: boolean;
   banco?: string | null;
   numeroCuenta?: string | null;
