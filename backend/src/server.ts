@@ -30,7 +30,9 @@ setInterval(async () => {
     for (const c of closed) {
       io.to(`auction:${c.auctionId}`).emit('item:sold', {
         closedItemId: c.closedItemId,
-        purchase: c.purchase,
+        winnerId: c.purchase?.clienteId ?? null,
+        purchaseId: c.purchase?.identificador ?? null,
+        nextItemId: c.nextItemId ?? null,
       });
       console.log(`[TIMER] Ítem cerrado por tiempo en subasta ${c.auctionId}`);
     }

@@ -58,7 +58,7 @@ export default function SubastaEnVivo() {
   const [notice, setNotice] = useState('');
   const [endsAt, setEndsAt] = useState<number | null>(null);
   const [now, setNow] = useState(Date.now());
-  const [won, setWon] = useState<{ piece: string; purchaseId: number | null } | null>(null);
+  const [won, setWon] = useState<{ piece: string; purchaseId: number | null; hasNext: boolean } | null>(null);
 
   const socketRef = useRef<Socket | null>(null);
   const meIdRef = useRef<string | null>(null);
@@ -216,10 +216,11 @@ export default function SubastaEnVivo() {
         );
       });
       // Pieza adjudicada (cerrada por el martillero).
-      s.on('item:sold', (payload: { closedItemId: string; winnerId?: number | string | null; purchaseId?: number | null; nextItemId?: number | null }) => {
-        if (payload.winnerId != null && String(payload.winnerId) === meIdRef.current) {
-          // Gané la pieza → pantalla de ganador.
-          setWon({ piece: itemRef.current?.descripcion ?? 'la pieza', purchaseId: payload.purchaseId ?? null });
+      s.on('item:sold', (payload: { closedItemId: string; winnerId?: number | string | null; purchaseId?: number | null; nextItemId?: number | null; purchase?: { clienteId?: number | string | null; identificador?: number | null } | null }) => {
+        const winnerId = payload.winnerId ?? payload.purchase?.clienteId ?? null;
+        const purchaseId = payload.purchaseId ?? payload.purchase?.identificador ?? null;
+        if (winnerId != null && String(winnerId) === meIdRef.current) {
+          setWon({ piece: itemRef.current?.descripcion ?? 'la pieza', purchaseId, hasNext: payload.nextItemId != null });
         } else {
           setNotice('Se adjudicó la pieza anterior.');
         }
@@ -305,13 +306,13 @@ export default function SubastaEnVivo() {
           <Text style={styles.wonTitle}>¡Ganaste la subasta!</Text>
           <Text style={styles.wonPiece}>{won.piece}</Text>
           <Text style={styles.wonMsg}>
-            Te adjudicaste la pieza. Te va a llegar el detalle del pago (oferta, comisiones y envío) en Mis compras.
+            Te adjudicaste la pieza. Podés ver el detalle de la compra o seguir con el próximo ítem de la subasta.
           </Text>
           <Pressable onPress={() => { setWon(null); refreshCurrent(); }} style={({ pressed }) => [styles.wonPrimary, pressed && styles.dim]}>
-            <Text style={styles.wonPrimaryText}>Volver a la subasta</Text>
+            <Text style={styles.wonPrimaryText}>{won.hasNext ? 'Seguir con el siguiente ítem' : 'Volver a la subasta'}</Text>
           </Pressable>
           <Pressable onPress={() => { const pid = won.purchaseId; setWon(null); router.push(pid != null ? `/purchase/${pid}` : '/mis-compras'); }} style={({ pressed }) => [styles.wonSecondary, pressed && styles.dim]}>
-            <Text style={styles.wonSecondaryText}>Ir a la compra</Text>
+            <Text style={styles.wonSecondaryText}>Ver detalle de compra</Text>
           </Pressable>
         </View>
       </View>

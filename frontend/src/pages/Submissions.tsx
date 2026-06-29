@@ -83,7 +83,8 @@ export default function Submissions({ onCountChange }: Props) {
     if (!selected || !base || !fechaSubasta) return;
     setSaving(true);
     try {
-      await offerSubmission(selected.id, parseFloat(base), parseFloat(comisionPct || '0'), fechaSubasta, comisiones, direccion || undefined);
+      const fechaSubastaIso = new Date(fechaSubasta).toISOString();
+      await offerSubmission(selected.id, parseFloat(base), parseFloat(comisionPct || '0'), fechaSubastaIso, comisiones, direccion || undefined);
       setAction(null); setSelected(null); setDireccion(''); setBase(''); setFechaSubasta('');
       load();
     } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Error al enviar propuesta'); } finally { setSaving(false); }
@@ -113,6 +114,7 @@ export default function Submissions({ onCountChange }: Props) {
   };
 
   const fmt = (d?: string | null) => (d ? new Date(d).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '—');
+  const fmtDateTime = (d?: string | null) => (d ? new Date(d).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—');
   const meta = (st: string) => STATUS_META[st] ?? { label: st.replace(/_/g, ' '), badge: 'badge-gray' };
   const fotosCount = (s: Submission) => s._count?.images ?? s.images?.length ?? 0;
   // Valuación a mostrar en la tabla según la etapa.
@@ -227,7 +229,7 @@ export default function Submissions({ onCountChange }: Props) {
               {selected.precioBaseOfrecido != null && (
                 <div className="info-row"><span className="lbl">Propuesta</span><span className="val"><strong>{money(selected.precioBaseOfrecido, selected.moneda)}</strong>{selected.comisionPorcentaje != null ? ` · comisión ${Number(selected.comisionPorcentaje)}%` : ''}</span></div>
               )}
-              {selected.fechaSubastaEstimada && <div className="info-row"><span className="lbl">Fecha estimada de subasta</span><span className="val">{fmt(selected.fechaSubastaEstimada)}</span></div>}
+              {selected.fechaSubastaEstimada && <div className="info-row"><span className="lbl">Fecha estimada de subasta</span><span className="val">{fmtDateTime(selected.fechaSubastaEstimada)}</span></div>}
               {selected.cuentaCobro && <div className="info-row"><span className="lbl">Cuenta destino</span><span className="val">{selected.cuentaCobro}</span></div>}
               {selected.enviadoAt && <div className="info-row"><span className="lbl">Enviado</span><span className="val">{fmt(selected.enviadoAt)}</span></div>}
               {selected.recibidoAt && <div className="info-row"><span className="lbl">Recibido</span><span className="val">{fmt(selected.recibidoAt)}</span></div>}
@@ -301,7 +303,7 @@ export default function Submissions({ onCountChange }: Props) {
             </div>
             <div className="form-group">
               <label>Fecha estimada de subasta</label>
-              <input type="date" value={fechaSubasta} onChange={(e) => setFechaSubasta(e.target.value)} required />
+              <input type="datetime-local" value={fechaSubasta} onChange={(e) => setFechaSubasta(e.target.value)} required />
             </div>
             <div className="form-group">
               <label>Comisión (%)</label>

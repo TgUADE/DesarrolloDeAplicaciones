@@ -2,6 +2,13 @@ import { Request, Response } from 'express';
 import { submissionService } from '../../services/submission.service';
 import { ok, serverError } from '../../utils/apiResponse';
 
+function parseEstimatedAuctionDate(value: unknown): Date {
+  if (typeof value !== 'string') return new Date(Number.NaN);
+  const normalized = value.trim();
+  if (/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(normalized)) return new Date(normalized + 'T12:00:00');
+  return new Date(normalized);
+}
+
 export const adminSubmissionController = {
   async list(req: Request, res: Response) {
     try {
@@ -18,7 +25,7 @@ export const adminSubmissionController = {
         req.params.id,
         Number(precioBaseOfrecido ?? valorOfrecido),
         Number(comisionPorcentaje),
-        new Date(fechaSubastaEstimada),
+        parseEstimatedAuctionDate(fechaSubastaEstimada),
         comisionesInfo,
         direccionEnvio,
       );
