@@ -121,7 +121,7 @@ export default function Seguros() {
                     <Text style={styles.valueMain}>{formatMoney(s.importe, cur)}</Text>
                   </View>
                   <View style={styles.valueBox}>
-                    <Text style={styles.valueLabel}>Premio estimado</Text>
+                    <Text style={styles.valueLabel}>Costo estimado</Text>
                     <Text style={styles.valueSub}>{formatMoney(s.premioEstimado, cur)}</Text>
                   </View>
                 </View>
