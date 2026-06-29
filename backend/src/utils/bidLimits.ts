@@ -1,12 +1,11 @@
-const UNLIMITED_CATEGORIES = ['oro', 'platino'];
+const CATEGORIES_WITHOUT_MAX_BID = ['oro', 'platino'];
 
 export function calcMinBid(precioBase: number, ultimaOferta: number, categoria: string): number {
-  if (UNLIMITED_CATEGORIES.includes(categoria)) return ultimaOferta + 0.01;
   return ultimaOferta + precioBase * 0.01;
 }
 
 export function calcMaxBid(precioBase: number, ultimaOferta: number, categoria: string): number | null {
-  if (UNLIMITED_CATEGORIES.includes(categoria)) return null;
+  if (CATEGORIES_WITHOUT_MAX_BID.includes(categoria)) return null;
   return ultimaOferta + precioBase * 0.2;
 }
 

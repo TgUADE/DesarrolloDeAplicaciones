@@ -39,7 +39,7 @@ const options: swaggerJsdoc.Options = {
 - Registro en 2 etapas: datos+docs → empresa aprueba → email con token → usuario completa registro
 - Categorías (orden ascendente): comun < especial < plata < oro < platino
 - Para pujar: usuario aprobado + categoría ≥ categoría subasta + al menos 1 medio de pago verificado
-- Rango de puja (NO aplica a oro/platino): mín = última oferta + 1% precio base; máx = última oferta + 20% precio base
+- Mínimo de puja: última oferta + 1% precio base. Máximo: última oferta + 20% precio base (sin tope máximo en oro/platino)
 - Solo 1 subasta activa por usuario a la vez
 - Subastas en USD: requieren un medio de pago compatible con USD. Cheques certificados: deben estar aprobados antes del inicio de la subasta
 - Si nadie puja un ítem: la empresa lo compra al precio base
@@ -669,9 +669,9 @@ const options: swaggerJsdoc.Options = {
 - Subasta en USD → el medio debe cubrir USD
 - Cheque certificado → debe estar aprobado antes del inicio de la subasta
 - Si el medio elegido no cubre el total estimado, la puja se permite y, si gana, la compra queda con multa del 10%
-- Rango de puja (NO aplica a subastas oro/platino):
+- Rango de puja:
   - Mínimo = última oferta + 1% × precio base
-  - Máximo = última oferta + 20% × precio base
+  - Máximo = última oferta + 20% × precio base (sin tope máximo en subastas oro/platino)
 - No puede haber otra puja pendiente de confirmación para el mismo ítem
 
 Usa **pg_advisory_lock** en PostgreSQL para serializar pujas concurrentes sin race conditions.
