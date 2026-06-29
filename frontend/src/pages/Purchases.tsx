@@ -106,7 +106,8 @@ export default function Purchases() {
                   purchases.map((p) => {
                     const persona = p.cliente?.persona;
                     const cur = p.moneda ?? 'ARS';
-                    const total = Number(p.importe) + Number(p.comision) + Number(p.costoEnvio ?? 0);
+                    const multa = Number(p.multa ?? 0);
+                    const total = Number(p.importe) + Number(p.comision) + Number(p.costoEnvio ?? 0) + multa;
                     return (
                       <tr key={p.identificador}>
                         <td style={{ color: '#94a3b8' }}>#{p.identificador}</td>
@@ -121,6 +122,7 @@ export default function Purchases() {
                         <td>
                           <strong>{money(total, cur)}</strong>
                           <br /><span style={{ color: '#94a3b8', fontSize: 11 }}>+ envío {money(Number(p.costoEnvio ?? 0), cur)}</span>
+                          {multa > 0 ? <><br /><span style={{ color: '#dc2626', fontSize: 11 }}>+ multa {money(multa, cur)}</span></> : null}
                         </td>
                         <td style={{ fontSize: 12, color: '#64748b' }}>
                           {p.medioPago ? `${TIPO_LABEL[p.medioPago.tipo] ?? p.medioPago.tipo}${p.medioPago.banco ? ` · ${p.medioPago.banco}` : ''}` : '—'}
@@ -136,10 +138,12 @@ export default function Purchases() {
                         </td>
                         <td>
                           <div className="action-row">
-                            {p.status === 'pendiente_pago' && (
+                            {(p.status === 'pendiente_pago' || p.status === 'multa_aplicada') && (
                               <>
                                 <button className="btn btn-sm btn-success" onClick={() => handlePaid(p.identificador)}>💵 Marcar pagada</button>
-                                <button className="btn btn-sm btn-warning" onClick={() => handleFine(p.identificador)}>⚠️ Multar</button>
+                                {p.status === 'pendiente_pago' && (
+                                  <button className="btn btn-sm btn-warning" onClick={() => handleFine(p.identificador)}>⚠️ Multar</button>
+                                )}
                               </>
                             )}
                             {p.status === 'pagado' && !p.retiraPersonalmente && (p.envioEstado ?? 'pendiente') === 'pendiente' && (

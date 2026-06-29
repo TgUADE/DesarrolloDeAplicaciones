@@ -97,7 +97,8 @@ const options: swaggerJsdoc.Options = {
             numeroTarjeta: { type: 'string', nullable: true, description: 'Últimos 4 dígitos' },
             titularTarjeta: { type: 'string', nullable: true },
             vencimiento: { type: 'string', nullable: true },
-            montoGarantia: { type: 'number', nullable: true, description: 'Solo cheque certificado' },
+            montoGarantia: { type: 'number', nullable: true, description: 'Garantía del cheque certificado' },
+            montoDisponible: { type: 'number', nullable: true, description: 'Monto disponible/reservado declarado para este medio de pago' },
             verificado: { type: 'boolean' },
             activo: { type: 'boolean' },
           },
@@ -169,6 +170,7 @@ const options: swaggerJsdoc.Options = {
             origenLicito: { type: 'boolean' },
             status: { type: 'string', enum: submissionStatusEnum },
             precioBaseOfrecido: { type: 'number', nullable: true },
+            fechaSubastaEstimada: { type: 'string', format: 'date', nullable: true },
             comisionesInfo: { type: 'string', nullable: true },
             motivoRechazo: { type: 'string', nullable: true },
             cuentaCobro: { type: 'string', nullable: true },
@@ -517,7 +519,7 @@ const options: swaggerJsdoc.Options = {
         post: {
           tags: ['Medios de Pago'],
           summary: 'Agregar medio de pago',
-          description: 'Se agrega en estado no verificado. Un admin debe verificarlo antes de que el usuario pueda pujar. Subastas en USD requieren tarjeta internacional o cuenta bancaria extranjera con moneda USD. El cheque certificado requiere montoGarantia y debe verificarse antes del inicio de la subasta.',
+          description: 'Se agrega en estado no verificado. Un admin debe verificarlo antes de que el usuario pueda pujar. Subastas en USD requieren tarjeta internacional o cuenta bancaria extranjera con moneda USD. Todos los medios requieren montoDisponible. El cheque certificado usa ese monto también como garantía y debe verificarse antes del inicio de la subasta.',
           parameters: [idParam()],
           requestBody: jsonBody({
             type: 'object',
@@ -531,7 +533,8 @@ const options: swaggerJsdoc.Options = {
               numeroTarjeta: { type: 'string', description: 'Últimos 4 dígitos' },
               titularTarjeta: { type: 'string' },
               vencimiento: { type: 'string', example: '12/27' },
-              montoGarantia: { type: 'number', description: 'Solo para cheque certificado. Las compras no pueden superar este monto.' },
+              montoDisponible: { type: 'number', description: 'Monto disponible/reservado declarado para este medio de pago.' },
+              montoGarantia: { type: 'number', description: 'Opcional; para cheque certificado se completa con el monto disponible si no se envía.' },
             },
           }),
           responses: {
@@ -558,6 +561,7 @@ const options: swaggerJsdoc.Options = {
               numeroTarjeta: { type: 'string' },
               titularTarjeta: { type: 'string' },
               vencimiento: { type: 'string' },
+              montoDisponible: { type: 'number' },
               montoGarantia: { type: 'number' },
             },
           }),
@@ -662,7 +666,7 @@ const options: swaggerJsdoc.Options = {
 - Usuario con status \`aprobado\` y conectado a esta subasta
 - Al menos un medio de pago verificado
 - Subasta en USD → el medio debe ser tarjeta_credito_internacional o cuenta_bancaria_extranjera con moneda USD
-- Cheque certificado → la suma de compras pendientes + nuevo monto ≤ montoGarantia
+- Si el medio elegido no cubre el total estimado, la puja se permite y, si gana, la compra queda con multa del 10%
 - Rango de puja (NO aplica a subastas oro/platino):
   - Mínimo = última oferta + 1% × precio base
   - Máximo = última oferta + 20% × precio base
@@ -1131,9 +1135,10 @@ Al confirmar, emite evento \`bid:new\` por WebSocket a todos los conectados.`,
           parameters: [idParam()],
           requestBody: jsonBody({
             type: 'object',
-            required: ['precioBaseOfrecido', 'comisionesInfo'],
+            required: ['precioBaseOfrecido', 'fechaSubastaEstimada', 'comisionesInfo'],
             properties: {
               precioBaseOfrecido: { type: 'number', description: 'Precio base que se usará en la subasta' },
+              fechaSubastaEstimada: { type: 'string', format: 'date', description: 'Fecha estimada en la que se subastaría la pieza' },
               comisionesInfo: { type: 'string', description: 'Descripción de las comisiones que cobrará la empresa' },
             },
           }),

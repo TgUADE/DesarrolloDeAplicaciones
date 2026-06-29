@@ -474,6 +474,7 @@ model PaymentMethod {
   titularTarjeta String?
   vencimiento    String?
   montoGarantia  Decimal? @db.Decimal(12, 2)
+  montoDisponible Decimal? @db.Decimal(18, 2)
   verificado     Boolean  @default(false)
   estado         String   @default("pendiente") @db.VarChar(20)
   activo         Boolean  @default(true)
@@ -524,6 +525,7 @@ model ItemSubmission {
   valorOfrecido        Decimal?  @db.Decimal(12, 2)
   precioBaseOfrecido   Decimal?  @db.Decimal(12, 2)
   comisionPorcentaje   Decimal?  @db.Decimal(5, 2)
+  fechaSubastaEstimada DateTime? @db.Date
   moneda               String?   @db.VarChar(3)
   comisionesInfo       String?
   motivoRechazo        String?

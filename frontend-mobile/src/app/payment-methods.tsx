@@ -29,9 +29,11 @@ const iconFor = (tipo: string) =>
   tipo.startsWith('tarjeta') ? 'card-outline' : tipo === 'cheque_certificado' ? 'document-text-outline' : 'business-outline';
 
 function datos(pm: PaymentMethod): string {
-  if (pm.tipo.startsWith('tarjeta')) return `${pm.banco ?? ''} ···· ${pm.numeroTarjeta ?? ''}`.trim();
-  if (pm.tipo === 'cheque_certificado') return `Garantía: ${pm.montoGarantia ?? '—'}`;
-  return `${pm.banco ?? ''}${pm.numeroCuenta ? ` · ${pm.numeroCuenta}` : ''}`.trim() || '—';
+  const monto = pm.montoDisponible ?? pm.montoGarantia ?? '—';
+  const montoLabel = `Monto: ${monto}`;
+  if (pm.tipo.startsWith('tarjeta')) return `${pm.banco ?? ''} ···· ${pm.numeroTarjeta ?? ''} · ${montoLabel}`.trim();
+  if (pm.tipo === 'cheque_certificado') return `Garantía: ${monto}`;
+  return `${pm.banco ?? ''}${pm.numeroCuenta ? ` · ${pm.numeroCuenta}` : ''} · ${montoLabel}`.trim() || montoLabel;
 }
 
 export default function MediosDePago() {

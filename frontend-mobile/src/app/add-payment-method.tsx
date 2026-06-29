@@ -33,7 +33,7 @@ export default function AddPaymentMethod() {
   const [numeroTarjeta, setNumeroTarjeta] = useState('');
   const [titularTarjeta, setTitularTarjeta] = useState('');
   const [vencimiento, setVencimiento] = useState('');
-  const [montoGarantia, setMontoGarantia] = useState('');
+  const [montoDisponible, setMontoDisponible] = useState('');
   const [comprobanteUri, setComprobanteUri] = useState<string>();
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -81,7 +81,7 @@ export default function AddPaymentMethod() {
     const cleanNumeroTarjeta = cleanText(numeroTarjeta);
     const cleanTitularTarjeta = cleanText(titularTarjeta);
     const cleanVencimiento = cleanText(vencimiento);
-    const cleanMontoGarantia = cleanText(montoGarantia);
+    const cleanMontoDisponible = cleanText(montoDisponible);
 
     if (!userId) {
       setError('No se encontró el usuario de la sesión.');
@@ -111,12 +111,12 @@ export default function AddPaymentMethod() {
       setError('Ingresá los últimos 4 dígitos de la tarjeta.');
       return;
     }
-    if (tipo === 'cheque_certificado' && !hasText(cleanMontoGarantia)) {
-      setError('Ingresá el monto determinado del cheque.');
+    if (!hasText(cleanMontoDisponible)) {
+      setError('Ingresá el monto disponible del medio de pago.');
       return;
     }
-    if (tipo === 'cheque_certificado' && (!Number.isFinite(Number(cleanMontoGarantia)) || Number(cleanMontoGarantia) <= 0)) {
-      setError('El monto determinado debe ser mayor a cero.');
+    if (!Number.isFinite(Number(cleanMontoDisponible)) || Number(cleanMontoDisponible) <= 0) {
+      setError('El monto disponible debe ser mayor a cero.');
       return;
     }
 
@@ -132,7 +132,8 @@ export default function AddPaymentMethod() {
         numeroTarjeta: cleanNumeroTarjeta || undefined,
         titularTarjeta: cleanTitularTarjeta || undefined,
         vencimiento: cleanVencimiento || undefined,
-        montoGarantia: cleanMontoGarantia ? Number(cleanMontoGarantia) : undefined,
+        montoDisponible: Number(cleanMontoDisponible),
+        montoGarantia: tipo === 'cheque_certificado' ? Number(cleanMontoDisponible) : undefined,
       });
       router.replace(params.return === 'list' ? '/payment-methods' : '/home');
     } catch (err: any) {
@@ -192,7 +193,7 @@ export default function AddPaymentMethod() {
               </Pressable>
             ))}
           </View>
-          {isCardBase ? <Text style={styles.monedaHint}>"Ambas" = la tarjeta sirve para subastas en pesos y en dólares.</Text> : null}
+          {isCardBase ? <Text style={styles.monedaHint}>Ambas = la tarjeta sirve para subastas en pesos y en dólares.</Text> : null}
 
           {tipo.startsWith('tarjeta_credito') ? (
             <>
@@ -208,14 +209,12 @@ export default function AddPaymentMethod() {
             </>
           ) : null}
 
-          {tipo === 'cheque_certificado' ? (
-            <TextField
-              label="Monto determinado *"
-              value={montoGarantia}
-              onChangeText={setMontoGarantia}
-              keyboardType="numeric"
-            />
-          ) : null}
+          <TextField
+            label={tipo === 'cheque_certificado' ? 'Monto certificado *' : 'Monto disponible/reservado *'}
+            value={montoDisponible}
+            onChangeText={setMontoDisponible}
+            keyboardType="numeric"
+          />
 
           <Text style={styles.proofLabel}>Adjuntar foto de comprobación (opcional)</Text>
           <Pressable onPress={pickComprobante} style={styles.proofBox}>

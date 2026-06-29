@@ -9,14 +9,19 @@ import {
   startItem,
   closeAuctionItem,
   setItemLocation,
-  setItemInsurance,
   getAvailableItems,
   addAuctionItem,
+  getCatalogs,
+  createCatalog,
+  getCatalogItems,
+  addCatalogItem,
+  assignCatalogToAuction,
   imageUrl,
   type Auction,
   type Auctioneer,
   type AuctionItem,
   type AdminProducto,
+  type AdminCatalog,
 } from '../api';
 
 const STATUS_BADGE: Record<string, string> = {
@@ -28,6 +33,7 @@ const STATUS_BADGE: Record<string, string> = {
 };
 
 const ITEM_BADGE: Record<string, string> = {
+  en_catalogo: 'badge-yellow',
   en_subasta: 'badge-blue',
   vendido: 'badge-green',
   sin_venta: 'badge-gray',
@@ -38,6 +44,7 @@ const CATEGORIAS = ['comun', 'especial', 'plata', 'oro', 'platino'];
 
 export default function Auctions() {
   const [auctions, setAuctions] = useState<Auction[]>([]);
+  const [catalogs, setCatalogs] = useState<AdminCatalog[]>([]);
   const [auctioneers, setAuctioneers] = useState<Auctioneer[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -46,13 +53,14 @@ export default function Auctions() {
 
   // Items modal state
   const [itemsFor, setItemsFor] = useState<Auction | null>(null);
+  const [catalogItemsFor, setCatalogItemsFor] = useState<AdminCatalog | null>(null);
   const [items, setItems] = useState<AuctionItem[]>([]);
   const [itemsLoading, setItemsLoading] = useState(false);
   const [itemBusy, setItemBusy] = useState<number | null>(null);
 
-  // Depósito / seguro de un ítem
+  // Depósito de un ítem
   const [locItem, setLocItem] = useState<AuctionItem | null>(null);
-  const [locForm, setLocForm] = useState({ deposito: '', ubicacion: '', nroPoliza: '', compania: '', importe: '' });
+  const [locForm, setLocForm] = useState({ deposito: '', ubicacion: '' });
   const [locSaving, setLocSaving] = useState(false);
 
   // Agregar piezas disponibles al catálogo
@@ -79,9 +87,10 @@ export default function Auctions() {
     setLoading(true);
     setError('');
     try {
-      const [aData, rData] = await Promise.all([getAuctions(), getAuctioneers()]);
+      const [aData, rData, cData] = await Promise.all([getAuctions(), getAuctioneers(), getCatalogs()]);
       setAuctions(aData.auctions);
       setAuctioneers(rData.auctioneers);
+      setCatalogs(cData.catalogs);
       if (!form.rematadorId && rData.auctioneers.length > 0) {
         setForm((f) => ({ ...f, rematadorId: rData.auctioneers[0].id }));
       }
@@ -108,6 +117,55 @@ export default function Auctions() {
     }
   };
 
+  const handleCreateCatalog = async () => {
+    const descripcion = prompt('Descripción del catálogo');
+    if (!descripcion?.trim()) return;
+    setError('');
+    try {
+      await createCatalog({ descripcion: descripcion.trim() });
+      await load();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Error al crear catálogo');
+    }
+  };
+
+  const openCatalogItems = async (c: AdminCatalog) => {
+    setCatalogItemsFor(c);
+    setItemsFor(null);
+    setItemsLoading(true);
+    setItems([]);
+    try {
+      const data = await getCatalogItems(c.id);
+      setItems(data.items);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Error al cargar ítems del catálogo');
+    } finally {
+      setItemsLoading(false);
+    }
+  };
+
+  const refreshCatalogItems = async (catalogId: string) => {
+    const [cData, iData] = await Promise.all([getCatalogs(), getCatalogItems(catalogId)]);
+    setCatalogs(cData.catalogs);
+    setItems(iData.items);
+    const updated = cData.catalogs.find((x) => x.id === catalogId);
+    if (updated) setCatalogItemsFor(updated);
+  };
+
+  const handleAssignCatalog = async (c: AdminCatalog) => {
+    const candidates = auctions.filter((a) => a.status === 'programada');
+    const hint = candidates.map((a) => '#' + a.id + ' ' + a.titulo + ' (' + (a.moneda ?? 'ARS') + ')').join('\n');
+    const auctionId = prompt('ID de subasta programada para asignar este catálogo:\n' + hint);
+    if (!auctionId) return;
+    setError('');
+    try {
+      await assignCatalogToAuction(c.id, auctionId.trim());
+      await load();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Error al asignar catálogo');
+    }
+  };
+
   const handleOpen = async (a: Auction) => {
     if (!confirm(`¿Abrir la subasta "${a.titulo}"? Pasará a estado "abierta" y los usuarios podrán pujar.`)) return;
     try {
@@ -131,6 +189,7 @@ export default function Auctions() {
   // ── Items ───────────────────────────────────────────
   const openItems = async (a: Auction) => {
     setItemsFor(a);
+    setCatalogItemsFor(null);
     setItemsLoading(true);
     setItems([]);
     try {
@@ -182,7 +241,7 @@ export default function Auctions() {
 
   const openLoc = (it: AuctionItem) => {
     setLocItem(it);
-    setLocForm({ deposito: '', ubicacion: '', nroPoliza: `POL-${it.productoId}`, compania: 'La Subastadora Seguros S.A.', importe: String(it.precioBase ?? '') });
+    setLocForm({ deposito: '', ubicacion: '' });
   };
 
   const saveLoc = async () => {
@@ -191,11 +250,9 @@ export default function Auctions() {
     setError('');
     try {
       if (locForm.deposito || locForm.ubicacion) await setItemLocation(locItem.productoId, locForm.deposito, locForm.ubicacion);
-      if (locForm.nroPoliza && locForm.compania && locForm.importe) {
-        await setItemInsurance(locItem.productoId, { nroPoliza: locForm.nroPoliza, compania: locForm.compania, importe: Number(locForm.importe) });
-      }
       setLocItem(null);
       if (itemsFor) await refreshItemsAndAuction(itemsFor.id);
+      if (catalogItemsFor) await refreshCatalogItems(catalogItemsFor.id);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Error al guardar');
     } finally {
@@ -208,9 +265,10 @@ export default function Auctions() {
     setAvailLoading(true);
     setError('');
     try {
-      const [data, all] = await Promise.all([getAvailableItems(itemsFor?.moneda), getAvailableItems()]);
+      const targetMoneda = itemsFor?.moneda ?? catalogItemsFor?.moneda ?? undefined;
+      const [data, all] = await Promise.all([getAvailableItems(targetMoneda), getAvailableItems()]);
       setAvailable(data.items);
-      setAvailOther(all.items.length - data.items.length); // disponibles en otra moneda
+      setAvailOther(targetMoneda ? all.items.length - data.items.length : 0); // disponibles en otra moneda
       const prices: Record<number, string> = {};
       for (const p of data.items) prices[p.identificador] = p.seguro?.importe != null ? String(Math.round(Number(p.seguro.importe))) : '';
       setPriceById(prices);
@@ -222,14 +280,20 @@ export default function Auctions() {
   };
 
   const doAdd = async (p: AdminProducto) => {
-    if (!itemsFor) return;
+    if (!itemsFor && !catalogItemsFor) return;
     const pb = Number(priceById[p.identificador] || p.seguro?.importe || 0);
     if (!pb || pb <= 0.01) { setError('Ingresá un precio base válido.'); return; }
     setAddBusy(p.identificador);
     setError('');
     try {
-      await addAuctionItem(itemsFor.id, p.identificador, pb, Math.max(1, Math.round(pb * 0.05)));
-      await refreshItemsAndAuction(itemsFor.id);
+      const comision = Math.max(1, Math.round(pb * 0.05));
+      if (itemsFor) {
+        await addAuctionItem(itemsFor.id, p.identificador, pb, comision);
+        await refreshItemsAndAuction(itemsFor.id);
+      } else if (catalogItemsFor) {
+        await addCatalogItem(catalogItemsFor.id, p.identificador, pb, comision);
+        await refreshCatalogItems(catalogItemsFor.id);
+      }
       await openAdd();
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Error al agregar la pieza');
@@ -244,6 +308,9 @@ export default function Auctions() {
   const money = (n?: number | string | null, cur = 'ARS') =>
     n != null && n !== '' ? Number(n).toLocaleString('es-AR', { style: 'currency', currency: cur, maximumFractionDigits: 0 }) : '—';
 
+  const activeItemsTitle = itemsFor?.titulo ?? catalogItemsFor?.descripcion ?? '';
+  const activeItemsMoneda = itemsFor?.moneda ?? catalogItemsFor?.moneda ?? undefined;
+
   return (
     <>
       <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
@@ -251,12 +318,66 @@ export default function Auctions() {
           <h1>Subastas</h1>
           <p>{auctions.length} subasta{auctions.length !== 1 ? 's' : ''}</p>
         </div>
-        <button className="btn btn-primary" onClick={() => setShowCreate(true)}>+ Nueva subasta</button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button className="btn btn-secondary" onClick={handleCreateCatalog}>+ Nuevo catálogo</button>
+          <button className="btn btn-primary" onClick={() => setShowCreate(true)}>+ Nueva subasta</button>
+        </div>
       </div>
 
       {error && <div className="error-banner">⚠️ {error}</div>}
 
       <div className="card">
+        <div className="card-header">
+          <h2>Catálogos</h2>
+          <span style={{ color: '#64748b', fontSize: 12 }}>{catalogs.length} catálogo{catalogs.length !== 1 ? 's' : ''}</span>
+        </div>
+        <div className="table-wrap">
+          {loading ? (
+            <div className="spinner">Cargando...</div>
+          ) : (
+            <table>
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Descripción</th>
+                  <th>Estado</th>
+                  <th>Subasta</th>
+                  <th>Ítems</th>
+                  <th>Moneda</th>
+                  <th>Acciones</th>
+                </tr>
+              </thead>
+              <tbody>
+                {catalogs.length === 0 ? (
+                  <tr className="empty-row"><td colSpan={7}>No hay catálogos</td></tr>
+                ) : catalogs.map((c) => (
+                  <tr key={c.id}>
+                    <td style={{ color: '#94a3b8' }}>#{c.id}</td>
+                    <td><strong>{c.descripcion}</strong></td>
+                    <td><span className={'badge ' + (c.status === 'borrador' ? 'badge-yellow' : 'badge-blue')}>{c.status}</span></td>
+                    <td>{c.subastaTitulo ?? 'Sin subasta'}</td>
+                    <td>{c.itemCount}</td>
+                    <td>{c.moneda ?? '—'}</td>
+                    <td>
+                      <div className="action-row">
+                        <button className="btn btn-sm btn-secondary" onClick={() => openCatalogItems(c)}>Ítems</button>
+                        {c.status === 'borrador' && (
+                          <button className="btn btn-sm btn-primary" disabled={c.itemCount === 0} onClick={() => handleAssignCatalog(c)}>Asignar</button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </div>
+
+      <div className="card">
+        <div className="card-header">
+          <h2>Subastas</h2>
+        </div>
         <div className="table-wrap">
           {loading ? (
             <div className="spinner">Cargando...</div>
@@ -416,7 +537,7 @@ export default function Auctions() {
                                   {itemBusy === it.identificador ? '...' : '▶ Iniciar'}
                                 </button>
                               )}
-                              <button className="btn btn-sm btn-secondary" title="Asignar depósito y seguro" onClick={() => openLoc(it)}>📍 Depósito</button>
+                              <button className="btn btn-sm btn-secondary" title="Asignar depósito" onClick={() => openLoc(it)}>📍 Depósito</button>
                             </div>
                           </td>
                         </tr>
@@ -434,21 +555,104 @@ export default function Auctions() {
         </div>
       )}
 
+      {/* Catalog items modal */}
+      {catalogItemsFor && (
+        <div className="modal-overlay" onClick={() => setCatalogItemsFor(null)}>
+          <div className="modal" style={{ width: 680 }} onClick={(e) => e.stopPropagation()}>
+            <h2>Ítems — {catalogItemsFor.descripcion}</h2>
+            <div style={{ marginBottom: 16, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+              <span className={'badge ' + (catalogItemsFor.status === 'borrador' ? 'badge-yellow' : 'badge-blue')}>
+                {catalogItemsFor.status}
+              </span>
+              <span style={{ fontSize: 13, color: '#64748b' }}>
+                · {items.length} ítem{items.length !== 1 ? 's' : ''}{catalogItemsFor.moneda ? ` · ${catalogItemsFor.moneda}` : ''}
+              </span>
+              {catalogItemsFor.subastaTitulo ? <span style={{ fontSize: 13, color: '#64748b' }}>· {catalogItemsFor.subastaTitulo}</span> : null}
+            </div>
+
+            {catalogItemsFor.status === 'borrador' && (
+              <button className="btn btn-sm btn-primary" style={{ marginBottom: 12 }} onClick={openAdd}>+ Agregar pieza al catálogo</button>
+            )}
+
+            <div className="table-wrap">
+              {itemsLoading ? (
+                <div className="spinner">Cargando ítems...</div>
+              ) : items.length === 0 ? (
+                <p style={{ color: '#94a3b8', textAlign: 'center', padding: 32 }}>
+                  Este catálogo todavía no tiene ítems.
+                </p>
+              ) : (
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Orden</th>
+                      <th>Artículo</th>
+                      <th>Precio base</th>
+                      <th>Estado</th>
+                      <th>Acción</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {items.map((it) => {
+                      const thumb = imageUrl(it.producto?.fotos?.[0]?.url ?? undefined);
+                      return (
+                        <tr key={it.identificador}>
+                          <td style={{ color: '#94a3b8' }}>{it.ordenEnSubasta}</td>
+                          <td>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                              {thumb ? (
+                                <img src={thumb} alt="" style={{ width: 40, height: 40, borderRadius: 6, objectFit: 'cover', flexShrink: 0 }} />
+                              ) : (
+                                <div style={{ width: 40, height: 40, borderRadius: 6, background: '#e2e8f0', flexShrink: 0 }} />
+                              )}
+                              <div>
+                                <strong>{it.producto?.descripcionCompleta ?? `Ítem #${it.identificador}`}</strong>
+                                {it.numeroPieza ? <div style={{ fontSize: 11, color: '#94a3b8' }}>#{it.numeroPieza}</div> : null}
+                              </div>
+                            </div>
+                          </td>
+                          <td><strong>{money(it.precioBase, catalogItemsFor.moneda ?? 'ARS')}</strong></td>
+                          <td>
+                            <span className={`badge ${ITEM_BADGE[it.status] ?? 'badge-gray'}`}>
+                              {it.status?.replace('_', ' ')}
+                            </span>
+                          </td>
+                          <td>
+                            <button className="btn btn-sm btn-secondary" title="Asignar depósito" onClick={() => openLoc(it)}>Depósito</button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              )}
+            </div>
+
+            <div className="modal-actions">
+              {catalogItemsFor.status === 'borrador' && catalogItemsFor.itemCount > 0 && (
+                <button className="btn btn-primary" onClick={() => handleAssignCatalog(catalogItemsFor)}>Asignar a subasta</button>
+              )}
+              <button className="btn btn-secondary" onClick={() => setCatalogItemsFor(null)}>Cerrar</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Agregar pieza disponible al catálogo */}
-      {adding && itemsFor && (
+      {adding && (itemsFor || catalogItemsFor) && (
         <div className="modal-overlay" onClick={() => setAdding(false)}>
           <div className="modal" style={{ width: 640 }} onClick={(e) => e.stopPropagation()}>
-            <h2>➕ Agregar pieza — {itemsFor.titulo}</h2>
+            <h2>Agregar pieza — {activeItemsTitle}</h2>
             <p style={{ color: '#64748b', fontSize: 13, marginTop: -8, marginBottom: 12 }}>
-              Piezas aceptadas y disponibles (sin asignar a otra subasta), <strong>solo en {itemsFor.moneda}</strong> (la moneda de esta subasta). El precio base sugerido es el del seguro.
+              Piezas aceptadas y disponibles (sin asignar a otro catálogo), <strong>solo en {activeItemsMoneda ?? 'la moneda del catálogo'}</strong> El precio base sugerido es el del seguro.
             </p>
             {availLoading ? (
               <div className="spinner">Cargando...</div>
             ) : available.length === 0 ? (
               <p style={{ color: '#94a3b8', textAlign: 'center', padding: 24 }}>
-                No hay piezas disponibles en {itemsFor.moneda}. Aceptá solicitudes de venta en esa moneda para generar piezas.
+                No hay piezas disponibles{activeItemsMoneda ? ` en ${activeItemsMoneda}` : ''}. Aceptá solicitudes de venta en esa moneda para generar piezas.
                 {availOther > 0 && (
-                  <><br /><br />💡 Hay {availOther} pieza{availOther !== 1 ? 's' : ''} disponible{availOther !== 1 ? 's' : ''} en <strong>otra moneda</strong>. Como esta subasta es en {itemsFor.moneda}, solo entran piezas en {itemsFor.moneda}. Para esas piezas, creá/usá una subasta de su moneda.</>
+                  <><br /><br />💡 Hay {availOther} pieza{availOther !== 1 ? 's' : ''} disponible{availOther !== 1 ? 's' : ''} en <strong>otra moneda</strong>. Como el destino es en {activeItemsMoneda}, solo entran piezas en {activeItemsMoneda}. Para esas piezas, creá/usá una subasta de su moneda.</>
                 )}
               </p>
             ) : (
@@ -504,11 +708,11 @@ export default function Auctions() {
         </div>
       )}
 
-      {/* Depósito / seguro modal */}
+      {/* Depósito modal */}
       {locItem && (
         <div className="modal-overlay" onClick={() => setLocItem(null)}>
           <div className="modal" style={{ width: 480 }} onClick={(e) => e.stopPropagation()}>
-            <h2>📍 Depósito y seguro</h2>
+            <h2>📍 Depósito</h2>
             <p style={{ color: '#64748b', fontSize: 13, marginTop: -8, marginBottom: 12 }}>
               {locItem.producto?.descripcionCompleta ?? `Ítem #${locItem.identificador}`}
             </p>
@@ -520,21 +724,6 @@ export default function Auctions() {
               <div className="form-group">
                 <label>Ubicación</label>
                 <input value={locForm.ubicacion} onChange={(e) => setLocForm((f) => ({ ...f, ubicacion: e.target.value }))} placeholder="Ej: Estante A-12" />
-              </div>
-            </div>
-            <h3 style={{ fontSize: 14, margin: '8px 0' }}>Póliza de seguro</h3>
-            <div className="form-group">
-              <label>N° de póliza</label>
-              <input value={locForm.nroPoliza} onChange={(e) => setLocForm((f) => ({ ...f, nroPoliza: e.target.value }))} />
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 12 }}>
-              <div className="form-group">
-                <label>Compañía</label>
-                <input value={locForm.compania} onChange={(e) => setLocForm((f) => ({ ...f, compania: e.target.value }))} />
-              </div>
-              <div className="form-group">
-                <label>Importe asegurado</label>
-                <input type="number" value={locForm.importe} onChange={(e) => setLocForm((f) => ({ ...f, importe: e.target.value }))} />
               </div>
             </div>
             <div className="modal-actions">

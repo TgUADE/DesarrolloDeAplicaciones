@@ -103,7 +103,10 @@ export const adminSeguroController = {
       const productoId = parseInt(req.params.productoId);
       const seguro = await prisma.seguro.findUnique({
         where: { nroPoliza },
-        include: { app: { include: { duenio: { include: { persona: { include: { app: true } } } } } } },
+        include: {
+          app: { include: { duenio: { include: { persona: { include: { app: true } } } } } },
+          productos: { select: { identificador: true, duenioId: true } },
+        },
       });
       if (!seguro) return res.status(404).json({ success: false, error: 'Póliza no encontrada' });
 
@@ -118,6 +121,12 @@ export const adminSeguroController = {
         return res.status(409).json({
           success: false,
           error: `La póliza es del dueño ${nombre}. No se pueden asignar productos de otro dueño.`,
+        });
+      }
+      if (seguro.productos.some((p) => p.duenioId !== producto.duenioId)) {
+        return res.status(409).json({
+          success: false,
+          error: 'La póliza ya cubre productos de otro dueño.',
         });
       }
       if (!seguro.app) {

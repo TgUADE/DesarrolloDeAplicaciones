@@ -68,18 +68,4 @@ export const submissionController = {
       return ok(res, sub);
     } catch (err: any) { return res.status(err.status || 500).json({ success: false, error: err.message }); }
   },
-
-  async acceptAppraisal(req: Request, res: Response) {
-    try {
-      const sub = await submissionService.userAcceptAppraisal(req.params.id, parseInt(req.user!.userId));
-      return ok(res, sub);
-    } catch (err: any) { return res.status(err.status || 500).json({ success: false, error: err.message }); }
-  },
-
-  async rejectAppraisal(req: Request, res: Response) {
-    try {
-      const sub = await submissionService.userRejectAppraisal(req.params.id, parseInt(req.user!.userId));
-      return ok(res, sub);
-    } catch (err: any) { return res.status(err.status || 500).json({ success: false, error: err.message }); }
-  },
 };

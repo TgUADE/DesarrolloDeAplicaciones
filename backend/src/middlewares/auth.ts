@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { verifyAccessToken, JwtPayload } from '../utils/jwt';
 import { unauthorized, forbidden } from '../utils/apiResponse';
+import { prisma } from '../config/prisma';
 
 declare global {
   namespace Express {
@@ -10,7 +11,7 @@ declare global {
   }
 }
 
-export function verifyToken(req: Request, res: Response, next: NextFunction): void {
+export async function verifyToken(req: Request, res: Response, next: NextFunction): Promise<void> {
   const header = req.headers.authorization;
   if (!header?.startsWith('Bearer ')) {
     unauthorized(res);
@@ -18,7 +19,20 @@ export function verifyToken(req: Request, res: Response, next: NextFunction): vo
   }
   const token = header.split(' ')[1];
   try {
-    req.user = verifyAccessToken(token);
+    const user = verifyAccessToken(token);
+    const app = await prisma.personaApp.findUnique({
+      where: { personaId: parseInt(user.userId) },
+      select: { registrationStatus: true },
+    });
+    if (app?.registrationStatus === 'bloqueado') {
+      forbidden(res, 'Tu cuenta está bloqueada');
+      return;
+    }
+    if (app?.registrationStatus === 'suspendido') {
+      forbidden(res, 'Tu cuenta está suspendida');
+      return;
+    }
+    req.user = user;
     next();
   } catch {
     unauthorized(res, 'Token inválido o expirado');

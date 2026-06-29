@@ -4,7 +4,6 @@ import { StatusBar } from 'expo-status-bar';
 import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -27,10 +26,9 @@ import {
   type Item,
 } from '@/api/auctions';
 import { getStoredUser } from '@/api/auth';
-import { listPaymentMethods } from '@/api/payment-methods';
+import { listPaymentMethods, type PaymentMethod } from '@/api/payment-methods';
 import { createAuctionSocket } from '@/api/socket';
 import { Badge } from '@/components/ui/badge';
-import { auctionStatusMeta } from '@/constants/categories';
 import { Brand, FontSize, FontWeight, Radius, space } from '@/constants/theme';
 import { calcMaxBid, calcMinBid } from '@/utils/bid-limits';
 import { getApiErrorMessage } from '@/utils/errors';
@@ -48,6 +46,7 @@ export default function SubastaEnVivo() {
   const [bids, setBids] = useState<Bid[]>([]);
   const [userId, setUserId] = useState<string | null>(null);
   const [pmId, setPmId] = useState<string | null>(null);
+  const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
   const [canBid, setCanBid] = useState(false);
   const [bidNotice, setBidNotice] = useState('');
   const [monto, setMonto] = useState('');
@@ -125,8 +124,10 @@ export default function SubastaEnVivo() {
         const verified = pms.filter((p) => p.verificado && p.activo);
         // El medio de pago debe cubrir la moneda de la subasta (o ser una tarjeta "AMBAS").
         const covers = (m: string) => m === a.moneda || m === 'AMBAS';
-        const compatibles = verified.filter((p) => covers(p.moneda));
+        const amountOf = (p: PaymentMethod) => Number(p.montoDisponible ?? p.montoGarantia ?? 0);
+        const compatibles = verified.filter((p) => covers(p.moneda) && amountOf(p) > 0);
         const usable = compatibles[0];
+        setPaymentMethods(compatibles);
         setPmId(usable?.id ?? null);
 
         // Motivo por el cual (no) puede pujar, para avisarle al usuario.
@@ -135,7 +136,7 @@ export default function SubastaEnVivo() {
         } else if (verified.length === 0) {
           setBidNotice('Tu medio de pago está pendiente de verificación. Vas a poder pujar cuando la empresa lo apruebe.');
         } else if (!usable) {
-          setBidNotice(`Esta subasta es en ${a.moneda}: necesitás un medio de pago en ${a.moneda} (o una tarjeta que cubra ambas monedas) verificado.`);
+          setBidNotice(`Esta subasta es en ${a.moneda}: necesitás un medio de pago aprobado, con monto declarado, en ${a.moneda} (o una tarjeta que cubra ambas monedas).`);
         } else {
           setBidNotice('');
         }
@@ -264,7 +265,16 @@ export default function SubastaEnVivo() {
     router.back();
   };
 
-  const status = auction ? auctionStatusMeta(auction.status) : null;
+  const selectedPaymentMethod = paymentMethods.find((pm) => pm.id === pmId) ?? null;
+  const selectedAvailable = Number(selectedPaymentMethod?.montoDisponible ?? selectedPaymentMethod?.montoGarantia ?? 0);
+  const bidAmount = Number(monto || 0);
+  const estimatedBidTotal = bidAmount ? bidAmount + bidAmount * 0.05 + Math.round(bidAmount * 0.02) : 0;
+  const mayApplyFine = !!selectedPaymentMethod && bidAmount > 0 && selectedAvailable > 0 && estimatedBidTotal > selectedAvailable;
+  const methodTitle = (pm: PaymentMethod) => {
+    if (pm.tipo.startsWith('tarjeta')) return `${pm.banco ?? 'Tarjeta'} ···· ${pm.numeroTarjeta ?? ''}`.trim();
+    if (pm.tipo === 'cheque_certificado') return `${pm.banco ?? 'Cheque certificado'} · cheque`;
+    return `${pm.banco ?? 'Cuenta'}${pm.numeroCuenta ? ` · ${pm.numeroCuenta.slice(-4)}` : ''}`;
+  };
 
   if (won) {
     return (
@@ -283,7 +293,7 @@ export default function SubastaEnVivo() {
           <Text style={styles.wonTitle}>¡Ganaste la subasta!</Text>
           <Text style={styles.wonPiece}>{won.piece}</Text>
           <Text style={styles.wonMsg}>
-            Te adjudicaste la pieza. Te va a llegar el detalle del pago (oferta, comisiones y envío) en "Mis compras".
+            Te adjudicaste la pieza. Te va a llegar el detalle del pago (oferta, comisiones y envío) en Mis compras.
           </Text>
           <Pressable onPress={() => { setWon(null); refreshCurrent(); }} style={({ pressed }) => [styles.wonPrimary, pressed && styles.dim]}>
             <Text style={styles.wonPrimaryText}>Volver a la subasta</Text>
@@ -315,7 +325,7 @@ export default function SubastaEnVivo() {
               <Image source={{ uri: cover }} style={styles.pieceThumb} contentFit="cover" transition={150} />
             ) : null}
             <View style={styles.pieceTextCol}>
-              <Text style={styles.pieceLabel}>Pieza actual #{item.numeroPieza}</Text>
+              <Text style={styles.pieceLabel}>Pieza actual</Text>
               <Text style={styles.pieceTitle} numberOfLines={1}>
                 {item.descripcion}
               </Text>
@@ -420,6 +430,31 @@ export default function SubastaEnVivo() {
               </Pressable>
             ))}
           </View>
+
+          {paymentMethods.length > 0 ? (
+            <View style={styles.paymentBox}>
+              <Text style={styles.paymentTitle}>Medio de pago</Text>
+              {paymentMethods.map((pm) => {
+                const selected = pm.id === pmId;
+                const available = Number(pm.montoDisponible ?? pm.montoGarantia ?? 0);
+                return (
+                  <Pressable
+                    key={pm.id}
+                    onPress={() => setPmId(pm.id)}
+                    style={[styles.paymentOption, selected && styles.paymentOptionSelected]}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.paymentName, selected && { color: Brand.primary }]} numberOfLines={1}>{methodTitle(pm)}</Text>
+                      <Text style={styles.paymentMeta}>{pm.moneda === 'AMBAS' ? 'ARS + USD' : pm.moneda} · disponible {formatMoney(available, pm.moneda === 'USD' ? 'USD' : moneda)}</Text>
+                    </View>
+                    <Text style={[styles.paymentCheck, selected && { color: Brand.primary }]}>{selected ? '✓' : ''}</Text>
+                  </Pressable>
+                );
+              })}
+              {mayApplyFine ? (
+                <Text style={styles.fundsWarning}>El monto declarado no cubre el total estimado. Podés pujar igual; si ganás, se aplica una multa del 10%.</Text>
+              ) : null}
+            </View>
+          ) : null}
 
           {bidError ? <Text style={styles.bidError}>{bidError}</Text> : null}
 
@@ -570,6 +605,31 @@ const styles = StyleSheet.create({
   },
   quickText: { fontSize: FontSize.sm, fontWeight: FontWeight.medium, color: Brand.textMuted },
   bidError: { color: Brand.danger, fontSize: FontSize.sm, marginBottom: space.sm },
+  paymentBox: {
+    backgroundColor: Brand.surface,
+    borderWidth: 1,
+    borderColor: Brand.border,
+    borderRadius: Radius.md,
+    padding: space.md,
+    gap: space.sm,
+    marginBottom: space.md,
+  },
+  paymentTitle: { fontSize: FontSize.xs, color: Brand.textMuted, fontWeight: FontWeight.bold, textTransform: 'uppercase' },
+  paymentOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.sm,
+    borderWidth: 1,
+    borderColor: Brand.border,
+    borderRadius: Radius.sm,
+    padding: space.sm,
+    backgroundColor: Brand.pageBg,
+  },
+  paymentOptionSelected: { borderColor: Brand.primary, backgroundColor: `${Brand.primary}10` },
+  paymentName: { fontSize: FontSize.sm, fontWeight: FontWeight.medium, color: Brand.text },
+  paymentMeta: { fontSize: FontSize.xs, color: Brand.textMuted, marginTop: 2 },
+  paymentCheck: { width: 18, textAlign: 'right', fontSize: FontSize.base, color: Brand.textMuted, fontWeight: FontWeight.bold },
+  fundsWarning: { fontSize: FontSize.xs, color: Brand.warning, lineHeight: 17 },
   pmNotice: {
     backgroundColor: `${Brand.warning}1A`,
     borderWidth: 1,

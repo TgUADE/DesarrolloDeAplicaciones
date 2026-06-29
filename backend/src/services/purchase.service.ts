@@ -20,7 +20,7 @@ export const purchaseService = {
     const medioPago = r.app?.paymentMethodId
       ? await prisma.paymentMethod.findUnique({
           where: { id: r.app.paymentMethodId },
-          select: { tipo: true, banco: true, moneda: true, numeroCuenta: true, numeroTarjeta: true },
+          select: { tipo: true, banco: true, moneda: true, numeroCuenta: true, numeroTarjeta: true, montoDisponible: true },
         })
       : null;
     const prod = flattenProducto(r.producto) as any;
@@ -130,8 +130,10 @@ export const purchaseService = {
   },
 
   async markRetired(id: number, personaId: number) {
-    const registro = await prisma.registroDeSubasta.findFirst({ where: { identificador: id, clienteId: personaId } });
+    const registro = await prisma.registroDeSubasta.findFirst({ where: { identificador: id, clienteId: personaId }, include: { app: true } });
     if (!registro) throw { status: 404, message: 'Compra no encontrada' };
+    if (registro.app?.status !== 'pagado') throw { status: 400, message: 'La compra debe estar pagada antes de retirarla personalmente' };
+    if ((registro.app?.envioEstado ?? 'pendiente') !== 'pendiente') throw { status: 400, message: 'La compra ya fue despachada y no puede cambiarse a retiro personal' };
     const updated = await prisma.registroDeSubasta.update({
       where: { identificador: id },
       data: { app: { update: { retiraPersonalmente: true } } },
@@ -159,7 +161,7 @@ export const purchaseService = {
     // Resolver el medio de pago usado (paymentMethodId es un string, no una relación).
     const pmIds = [...new Set(purchases.map((p) => p.app?.paymentMethodId).filter((x): x is string => !!x))];
     const pms = pmIds.length
-      ? await prisma.paymentMethod.findMany({ where: { id: { in: pmIds } }, select: { id: true, tipo: true, banco: true, moneda: true } })
+      ? await prisma.paymentMethod.findMany({ where: { id: { in: pmIds } }, select: { id: true, tipo: true, banco: true, moneda: true, montoDisponible: true } })
       : [];
     const pmById = new Map(pms.map((m) => [m.id, m]));
     const mapped = purchases.map((p) => ({

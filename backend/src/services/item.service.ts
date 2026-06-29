@@ -77,13 +77,45 @@ export const itemService = {
     productoId: number,
     data: { nroPoliza: string; compania: string; importe: number; polizaCombinada?: boolean },
   ) {
-    const polizaCombinada = toSiNo(data.polizaCombinada);
-    const seguro = await prisma.seguro.upsert({
-      where: { nroPoliza: data.nroPoliza },
-      create: { nroPoliza: data.nroPoliza, compania: data.compania, importe: data.importe, polizaCombinada },
-      update: { compania: data.compania, importe: data.importe, polizaCombinada },
+    const nroPoliza = data.nroPoliza?.trim();
+    const compania = data.compania?.trim();
+    if (!nroPoliza) throw { status: 400, message: 'El número de póliza es obligatorio' };
+    if (!compania) throw { status: 400, message: 'La compañía es obligatoria' };
+    if (!Number.isFinite(data.importe) || data.importe <= 0) throw { status: 400, message: 'El importe asegurado debe ser mayor a cero' };
+
+    const producto = await prisma.producto.findUnique({
+      where: { identificador: productoId },
+      select: { identificador: true, duenioId: true },
     });
-    await prisma.producto.update({ where: { identificador: productoId }, data: { nroPoliza: data.nroPoliza } });
+    if (!producto) throw { status: 404, message: 'Producto no encontrado' };
+
+    const existing = await prisma.seguro.findUnique({
+      where: { nroPoliza },
+      include: { app: true, productos: { select: { identificador: true, duenioId: true } } },
+    });
+    if (existing?.app && existing.app.duenioId !== producto.duenioId) {
+      throw { status: 400, message: 'La póliza ya pertenece a otro dueño' };
+    }
+    if (existing?.productos.some((p) => p.duenioId !== producto.duenioId)) {
+      throw { status: 400, message: 'La póliza cubre piezas de otro dueño' };
+    }
+
+    const willBeCombined = data.polizaCombinada ?? Boolean(existing && existing.productos.some((p) => p.identificador !== productoId));
+    const polizaCombinada = toSiNo(willBeCombined);
+    const seguro = await prisma.$transaction(async (tx) => {
+      const saved = await tx.seguro.upsert({
+        where: { nroPoliza },
+        create: { nroPoliza, compania, importe: data.importe, polizaCombinada },
+        update: { compania, importe: data.importe, polizaCombinada },
+      });
+      await tx.seguroApp.upsert({
+        where: { nroPoliza },
+        create: { nroPoliza, duenioId: producto.duenioId },
+        update: { duenioId: producto.duenioId },
+      });
+      await tx.producto.update({ where: { identificador: productoId }, data: { nroPoliza } });
+      return saved;
+    });
     return { ...seguro, polizaCombinada: fromSiNo(seguro.polizaCombinada) };
   },
 

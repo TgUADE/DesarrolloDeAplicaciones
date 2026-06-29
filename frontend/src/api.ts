@@ -38,6 +38,7 @@ export interface Submission {
   valorOfrecido: number | string | null;
   precioBaseOfrecido: number | string | null;
   comisionPorcentaje: number | string | null;
+  fechaSubastaEstimada: string | null;
   moneda: string | null;
   cuentaCobro: string | null;
   comisionesInfo: string | null;
@@ -61,6 +62,17 @@ export interface Auction {
   ubicacion: string;
   moneda?: string;
   currentItemId: number | null;
+}
+
+export interface AdminCatalog {
+  id: string;
+  identificador: number;
+  descripcion: string;
+  subastaId: number | null;
+  subastaTitulo: string | null;
+  status: string;
+  itemCount: number;
+  moneda: string | null;
 }
 
 export interface AuctionItem {
@@ -91,10 +103,11 @@ export interface Purchase {
   comision: string;
   moneda: string;
   costoEnvio: string | null;
+  multa?: string | null;
   retiraPersonalmente: boolean;
   envioEstado?: string; // pendiente | enviado | recibido
   createdAt: string;
-  medioPago?: { tipo: string; banco: string | null; moneda: string } | null;
+  medioPago?: { tipo: string; banco: string | null; moneda: string; montoDisponible?: number | string | null } | null;
   cliente?: { persona?: { nombre: string; apellido: string; email?: string | null } };
   producto?: { descripcionCatalogo?: string | null; numeroPieza?: string | null; deposito?: string | null };
 }
@@ -185,24 +198,26 @@ export async function getSubmissions(status?: string): Promise<{ submissions: Su
   return req(`/admin/submissions?${p}`);
 }
 
-// La empresa ofrece un valor inicial (+ dirección de envío) → el vendedor acepta/rechaza.
-export async function offerSubmission(id: string, valorOfrecido: number, direccionEnvio?: string): Promise<{ submission: Submission }> {
+// La empresa responde con propuesta completa → el vendedor acepta y envía el bien, o rechaza.
+export async function offerSubmission(
+  id: string,
+  precioBaseOfrecido: number,
+  comisionPorcentaje: number,
+  fechaSubastaEstimada: string,
+  comisionesInfo?: string,
+  direccionEnvio?: string,
+): Promise<{ submission: Submission }> {
   return req(`/admin/submissions/${id}/offer`, {
     method: 'PATCH',
-    body: JSON.stringify({ valorOfrecido, direccionEnvio }),
+    body: JSON.stringify({ precioBaseOfrecido, comisionPorcentaje, fechaSubastaEstimada, comisionesInfo, direccionEnvio }),
   });
 }
 
 // La empresa marca el ítem como recibido en el depósito.
-export async function markSubmissionReceived(id: string): Promise<{ submission: Submission }> {
-  return req(`/admin/submissions/${id}/received`, { method: 'PATCH' });
-}
-
-// Tasación final + % de comisión.
-export async function appraiseSubmission(id: string, precioBaseOfrecido: number, comisionPorcentaje: number, comisionesInfo?: string): Promise<{ submission: Submission }> {
-  return req(`/admin/submissions/${id}/appraisal`, {
+export async function markSubmissionReceived(id: string, deposito?: string, ubicacion?: string): Promise<{ submission: Submission }> {
+  return req(`/admin/submissions/${id}/received`, {
     method: 'PATCH',
-    body: JSON.stringify({ precioBaseOfrecido, comisionPorcentaje, comisionesInfo }),
+    body: JSON.stringify({ deposito, ubicacion }),
   });
 }
 
@@ -300,6 +315,34 @@ export async function addAuctionItem(auctionId: string, productoId: number, prec
   });
 }
 
+// Catalogs
+export async function getCatalogs(status?: string): Promise<{ catalogs: AdminCatalog[] }> {
+  const qs = status ? "?" + new URLSearchParams({ status }).toString() : "";
+  return req("/admin/catalogs" + qs);
+}
+
+export async function createCatalog(data: { descripcion: string }): Promise<AdminCatalog> {
+  return req("/admin/catalogs", { method: "POST", body: JSON.stringify(data) });
+}
+
+export async function getCatalogItems(id: string): Promise<{ items: AuctionItem[] }> {
+  return req("/admin/catalogs/" + id + "/items");
+}
+
+export async function addCatalogItem(catalogId: string, productoId: number, precioBase: number, comision: number): Promise<unknown> {
+  return req("/admin/catalogs/" + catalogId + "/items", {
+    method: "POST",
+    body: JSON.stringify({ itemId: productoId, precioBase, comision }),
+  });
+}
+
+export async function assignCatalogToAuction(catalogId: string, auctionId: string): Promise<AdminCatalog> {
+  return req("/admin/catalogs/" + catalogId + "/auction", {
+    method: "PATCH",
+    body: JSON.stringify({ subastaId: Number(auctionId) }),
+  });
+}
+
 // Payment methods
 export interface AdminPaymentMethod {
   id: string;
@@ -311,6 +354,7 @@ export interface AdminPaymentMethod {
   numeroTarjeta?: string | null;
   titularTarjeta?: string | null;
   montoGarantia?: number | null;
+  montoDisponible?: number | string | null;
   estado: string; // pendiente | aprobada | rechazada
   verificado: boolean;
   activo: boolean;

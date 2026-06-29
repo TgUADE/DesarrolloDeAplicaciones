@@ -131,7 +131,7 @@ export default function Seguros() {
                   <View key={p.identificador} style={styles.pieceRow}>
                     <Ionicons name="cube-outline" size={13} color={Brand.textMuted} />
                     <Text style={styles.pieceText} numberOfLines={1}>
-                      {p.numeroPieza ? `${p.numeroPieza} · ` : ''}{p.descripcionCompleta}
+                      {p.descripcionCompleta}
                     </Text>
                   </View>
                 ))}

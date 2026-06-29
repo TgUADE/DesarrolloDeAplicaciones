@@ -43,14 +43,15 @@ export function ItemCard({
         <View style={styles.thumb} />
       )}
       <View style={styles.body}>
-        <View style={styles.headerRow}>
-          <Text style={styles.piece}>Pieza #{item.numeroPieza}</Text>
-          {sold ? (
-            <Badge label="Subastado" color={Brand.textMuted} />
-          ) : isLive ? (
-            <Badge label="● En remate" color={Brand.danger} />
-          ) : null}
-        </View>
+        {sold || isLive ? (
+          <View style={styles.headerRow}>
+            {sold ? (
+              <Badge label="Subastado" color={Brand.textMuted} />
+            ) : isLive ? (
+              <Badge label="● En remate" color={Brand.danger} />
+            ) : null}
+          </View>
+        ) : null}
         <Text style={[styles.title, sold && styles.dimText]} numberOfLines={2}>
           {item.descripcion}
         </Text>
@@ -80,8 +81,7 @@ const styles = StyleSheet.create({
   thumb: { width: 100, alignSelf: 'stretch', minHeight: 100, backgroundColor: Brand.bg },
   thumbSold: { opacity: 0.5 },
   body: { flex: 1, padding: space.md - 2, gap: 2 },
-  headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  piece: { fontSize: FontSize.xs, fontWeight: FontWeight.medium, color: Brand.primary },
+  headerRow: { flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center' },
   title: { fontSize: FontSize.sm, fontWeight: FontWeight.medium, color: Brand.text },
   subtitle: { fontSize: FontSize.xs, color: Brand.textMuted },
   price: { fontSize: FontSize.sm, fontWeight: FontWeight.bold, color: Brand.accent, marginTop: 4 },

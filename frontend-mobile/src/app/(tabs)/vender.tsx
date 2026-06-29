@@ -10,12 +10,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getStoredUser, isGuestSession } from '@/api/auth';
 import { listPaymentMethods, type PaymentMethod } from '@/api/payment-methods';
 import {
-  acceptAppraisal,
   acceptOffer,
   createSubmission,
   listMySubmissions,
   markShipped,
-  rejectAppraisal,
   rejectOffer,
   type MySubmission,
 } from '@/api/submissions';
@@ -23,19 +21,17 @@ import { listMyProducts, type MyProduct } from '@/api/users';
 import { Badge } from '@/components/ui/badge';
 import { Brand, FontSize, FontWeight, Radius, space } from '@/constants/theme';
 import { getApiErrorMessage } from '@/utils/errors';
-import { formatMoney } from '@/utils/format';
+import { formatDate, formatMoney } from '@/utils/format';
 
 const STATUS_META: Record<string, { label: string; color: string }> = {
   pendiente_empresa: { label: 'En revisión', color: Brand.warning },
-  oferta_inicial: { label: 'Oferta recibida', color: Brand.accent },
+  oferta_inicial: { label: 'Propuesta recibida', color: Brand.accent },
   por_enviar: { label: 'Aceptada · a enviar', color: Brand.primary },
   enviado: { label: 'Enviado', color: Brand.primary },
-  recibido: { label: 'Recibido · en tasación', color: Brand.primary },
-  tasacion_final: { label: 'Tasación recibida', color: Brand.accent },
+  recibido: { label: 'Recibido', color: Brand.primary },
   aceptada_usuario: { label: 'Aceptada · en espera', color: Brand.success },
   rechazada_empresa: { label: 'Rechazada por la empresa', color: Brand.danger },
-  rechazada_usuario: { label: 'Rechazaste la oferta', color: Brand.textMuted },
-  rechazada_final: { label: 'Rechazaste la tasación', color: Brand.textMuted },
+  rechazada_usuario: { label: 'Rechazaste la propuesta', color: Brand.textMuted },
 };
 
 // Para una solicitud ACEPTADA, el badge depende del estado real de la pieza:
@@ -52,6 +48,7 @@ function aceptadaMeta(s: MySubmission): { label: string; color: string } {
 }
 
 const MIN_FOTOS = 6;
+type VenderView = 'form' | 'requests';
 
 const accountLabel = (pm: PaymentMethod) => {
   const last4 = pm.numeroCuenta ? ` ····${pm.numeroCuenta.slice(-4)}` : '';
@@ -63,6 +60,7 @@ export default function Vender() {
   const insets = useSafeAreaInsets();
   const [isGuest, setIsGuest] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
+  const [view, setView] = useState<VenderView>('requests');
 
   // Formulario
   const [nombre, setNombre] = useState('');
@@ -186,6 +184,7 @@ export default function Vender() {
       setOrigen(false);
       setImages([]);
       Alert.alert('¡Listo!', 'Tu solicitud fue enviada. La empresa la va a revisar y te va a ofrecer un valor.');
+      setView('requests');
       if (userId) load(userId);
     } catch (err) {
       setError(getApiErrorMessage(err, 'No se pudo enviar la solicitud.'));
@@ -233,7 +232,24 @@ export default function Vender() {
       </View>
 
       <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+        <View style={styles.segment}>
+          <Pressable onPress={() => setView('requests')} style={[styles.segmentOpt, view === 'requests' && styles.segmentOptSel]}>
+            <Ionicons name="list-outline" size={16} color={view === 'requests' ? '#fff' : Brand.textMuted} />
+            <Text style={[styles.segmentText, view === 'requests' && styles.segmentTextSel]}>Mis solicitudes</Text>
+            {subs.length > 0 ? (
+              <View style={[styles.segmentCount, view === 'requests' && styles.segmentCountSel]}>
+                <Text style={[styles.segmentCountText, view === 'requests' && styles.segmentCountTextSel]}>{subs.length}</Text>
+              </View>
+            ) : null}
+          </Pressable>
+          <Pressable onPress={() => setView('form')} style={[styles.segmentOpt, view === 'form' && styles.segmentOptSel]}>
+            <Ionicons name="add-circle-outline" size={16} color={view === 'form' ? '#fff' : Brand.textMuted} />
+            <Text style={[styles.segmentText, view === 'form' && styles.segmentTextSel]}>Nueva solicitud</Text>
+          </Pressable>
+        </View>
+
         {/* Formulario */}
+        {view === 'form' ? (
         <View style={styles.card}>
           <Text style={styles.label}>Nombre del artículo</Text>
           <TextInput style={styles.inputLine} value={nombre} onChangeText={setNombre} placeholder="Ej: Reloj de pie inglés" placeholderTextColor={Brand.placeholder} />
@@ -319,9 +335,18 @@ export default function Vender() {
             {sending ? <ActivityIndicator color="#fff" /> : <Text style={styles.submitText}>Enviar solicitud</Text>}
           </Pressable>
         </View>
+        ) : null}
 
         {/* Mis solicitudes */}
-        <Text style={styles.section}>Mis solicitudes</Text>
+        {view === 'requests' ? (
+        <>
+        <View style={styles.sectionHeader}>
+          <Text style={[styles.section, { marginTop: 0, marginBottom: 0 }]}>Mis solicitudes</Text>
+          <Pressable onPress={() => setView('form')} style={styles.inlineAction}>
+            <Ionicons name="add" size={16} color={Brand.primary} />
+            <Text style={styles.inlineActionText}>Nueva</Text>
+          </Pressable>
+        </View>
         {loading ? (
           <ActivityIndicator color={Brand.primary} style={{ marginTop: space.md }} />
         ) : subs.length === 0 ? (
@@ -330,6 +355,10 @@ export default function Vender() {
           subs.map((s) => {
             const meta = s.status === 'aceptada_usuario' ? aceptadaMeta(s) : (STATUS_META[s.status] ?? { label: s.status, color: Brand.textMuted });
             const cur = (s.moneda as 'ARS' | 'USD') ?? 'ARS';
+            const ventaMoneda = (s.ventaMoneda as 'ARS' | 'USD') ?? cur;
+            const ventaTotal = Number(s.ventaImporte ?? s.precioBaseOfrecido ?? 0);
+            const ventaComision = Number(s.ventaComision ?? 0);
+            const ventaNeto = ventaTotal - ventaComision;
             return (
               <View key={s.id} style={styles.subCard}>
                 <View style={styles.rowBetween}>
@@ -337,15 +366,15 @@ export default function Vender() {
                   <Badge label={meta.label} color={meta.color} />
                 </View>
                 {s.status === 'pendiente_empresa' ? (
-                  <Text style={styles.subMeta}>La empresa está revisando tu solicitud. Te va a ofrecer un valor.</Text>
+                  <Text style={styles.subMeta}>La empresa está revisando tu solicitud. Te va a enviar una propuesta con precio base, fecha estimada y comisión.</Text>
                 ) : null}
 
                 {s.status === 'oferta_inicial' ? (
                   <>
-                    <Text style={styles.subMeta}>La empresa te ofrece <Text style={styles.strong}>{formatMoney(Number(s.valorOfrecido ?? 0), cur)}</Text>. Si aceptás, vas a tener que enviar la pieza para su inspección.</Text>
+                    <Text style={styles.subMeta}>Propuesta — base: <Text style={styles.strong}>{formatMoney(Number(s.precioBaseOfrecido ?? s.valorOfrecido ?? 0), cur)}</Text> · comisión: <Text style={styles.strong}>{Number(s.comisionPorcentaje ?? 0)}%</Text>{s.fechaSubastaEstimada ? <> · fecha estimada: <Text style={styles.strong}>{formatDate(s.fechaSubastaEstimada)}</Text></> : null}. Si aceptás, vas a enviar la pieza para inspección.</Text>
                     <View style={styles.actionRow}>
                       <Pressable style={[styles.actionBtn, { backgroundColor: Brand.success }]} onPress={() => act(acceptOffer, s.id)}>
-                        <Text style={styles.actionText}>Aceptar oferta</Text>
+                        <Text style={styles.actionText}>Aceptar propuesta</Text>
                       </Pressable>
                       <Pressable style={[styles.actionBtn, { backgroundColor: Brand.danger }]} onPress={() => act(rejectOffer, s.id)}>
                         <Text style={styles.actionText}>Rechazar</Text>
@@ -356,7 +385,7 @@ export default function Vender() {
 
                 {s.status === 'por_enviar' ? (
                   <>
-                    <Text style={styles.subMeta}>Aceptaste la oferta de {formatMoney(Number(s.valorOfrecido ?? 0), cur)}. Enviá la pieza a:</Text>
+                    <Text style={styles.subMeta}>Aceptaste la propuesta de {formatMoney(Number(s.precioBaseOfrecido ?? s.valorOfrecido ?? 0), cur)}. Enviá la pieza a:</Text>
                     <View style={styles.addrBox}>
                       <Ionicons name="location-outline" size={14} color={Brand.text} />
                       <Text style={styles.addrText}>{s.direccionEnvio ?? 'Dirección a confirmar con la empresa'}</Text>
@@ -369,36 +398,20 @@ export default function Vender() {
                 ) : null}
 
                 {s.status === 'enviado' ? (
-                  <Text style={styles.subMeta}>Marcaste el ítem como enviado. Esperando que la empresa lo reciba e inspeccione.</Text>
+                  <Text style={styles.subMeta}>Marcaste el ítem como enviado. Cuando la empresa lo reciba, va a quedar guardado en depósito con seguro asignado.</Text>
                 ) : null}
 
                 {s.status === 'recibido' ? (
-                  <Text style={styles.subMeta}>La empresa recibió tu ítem y lo está tasando. Te va a llegar la tasación final.</Text>
-                ) : null}
-
-                {s.status === 'tasacion_final' ? (
-                  <>
-                    <Text style={styles.subMeta}>Tasación final — base: <Text style={styles.strong}>{formatMoney(Number(s.precioBaseOfrecido ?? 0), cur)}</Text> · comisión: <Text style={styles.strong}>{Number(s.comisionPorcentaje ?? 0)}%</Text></Text>
-                    {s.comisionesInfo ? <Text style={styles.subMeta}>{s.comisionesInfo}</Text> : null}
-                    <Text style={styles.subMetaItalic}>Si rechazás, se te devuelve el ítem con el envío a tu cargo.</Text>
-                    <View style={styles.actionRow}>
-                      <Pressable style={[styles.actionBtn, { backgroundColor: Brand.success }]} onPress={() => act(acceptAppraisal, s.id)}>
-                        <Text style={styles.actionText}>Aceptar</Text>
-                      </Pressable>
-                      <Pressable style={[styles.actionBtn, { backgroundColor: Brand.danger }]} onPress={() => act(rejectAppraisal, s.id)}>
-                        <Text style={styles.actionText}>Rechazar</Text>
-                      </Pressable>
-                    </View>
-                  </>
+                  <Text style={styles.subMeta}>La empresa recibió tu ítem. La ubicación de depósito se muestra en Mis piezas entregadas.</Text>
                 ) : null}
 
                 {s.status === 'aceptada_usuario' ? (
                   <Text style={styles.subMeta}>
                     {s.productoStatus === 'vendido'
-                      ? `Vendida en subasta (base ${formatMoney(Number(s.precioBaseOfrecido ?? 0), cur)}).`
+                      ? `Vendida en subasta por ${formatMoney(ventaTotal, ventaMoneda)}${s.ventaComision != null ? ` · comisión ${formatMoney(s.ventaComision, ventaMoneda)}` : ''} · Neto a recibir ${formatMoney(ventaNeto, ventaMoneda)}.`
                       : s.productoStatus === 'en_subasta'
                         ? `Tu pieza está ${s.subastaEstado === 'abierta' ? 'siendo subastada en vivo' : s.subastaEstado === 'programada' ? 'en una subasta programada' : 'en una subasta'} (base ${formatMoney(Number(s.precioBaseOfrecido ?? 0), cur)}). Si nadie oferta, la empresa la compra al precio base.`
-                        : `Aceptaste la tasación (base ${formatMoney(Number(s.precioBaseOfrecido ?? 0), cur)}). La empresa la va a incluir en una próxima subasta.`}
+                        : `La empresa recibió tu pieza y la guardó en depósito. Base acordada: ${formatMoney(Number(s.precioBaseOfrecido ?? s.valorOfrecido ?? 0), cur)}${s.fechaSubastaEstimada ? ` · subasta estimada para ${formatDate(s.fechaSubastaEstimada)}` : ''}.`}
                   </Text>
                 ) : null}
 
@@ -409,9 +422,11 @@ export default function Vender() {
             );
           })
         )}
+        </>
+        ) : null}
 
         {/* Mis piezas (dueño): depósito + póliza */}
-        {products.length > 0 ? (
+        {view === 'requests' && products.length > 0 ? (
           <>
             <View style={[styles.rowBetween, { marginTop: space.lg, marginBottom: space.sm }]}>
               <Text style={[styles.section, { marginTop: 0, marginBottom: 0 }]}>Mis piezas entregadas</Text>
@@ -474,11 +489,15 @@ const styles = StyleSheet.create({
   addAccountText: { color: Brand.primary, fontSize: FontSize.sm, fontWeight: FontWeight.medium },
   noAccount: { gap: space.xs },
   noAccountText: { fontSize: FontSize.xs, color: Brand.textMuted, lineHeight: 18 },
-  segment: { flexDirection: 'row', backgroundColor: Brand.bg, borderWidth: 1, borderColor: Brand.border, borderRadius: Radius.sm, padding: 4 },
-  segmentOpt: { flex: 1, alignItems: 'center', paddingVertical: 8, borderRadius: Radius.sm },
+  segment: { flexDirection: 'row', backgroundColor: Brand.bg, borderWidth: 1, borderColor: Brand.border, borderRadius: Radius.sm, padding: 4, marginBottom: space.md },
+  segmentOpt: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 9, borderRadius: Radius.sm, minHeight: 38 },
   segmentOptSel: { backgroundColor: Brand.primary },
   segmentText: { color: Brand.textMuted, fontWeight: FontWeight.medium },
   segmentTextSel: { color: '#fff' },
+  segmentCount: { minWidth: 20, height: 20, borderRadius: 10, paddingHorizontal: 6, alignItems: 'center', justifyContent: 'center', backgroundColor: Brand.surface },
+  segmentCountSel: { backgroundColor: 'rgba(255,255,255,0.22)' },
+  segmentCountText: { fontSize: 11, fontWeight: FontWeight.bold, color: Brand.textMuted },
+  segmentCountTextSel: { color: '#fff' },
   // Precio
   precioRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: Brand.bg, borderWidth: 1, borderColor: Brand.border, borderRadius: Radius.sm, paddingHorizontal: space.md },
   precioCur: { fontSize: FontSize.base, fontWeight: FontWeight.bold, color: Brand.textMuted, marginRight: 6 },
@@ -499,6 +518,9 @@ const styles = StyleSheet.create({
   submitText: { color: '#fff', fontSize: FontSize.base, fontWeight: FontWeight.bold },
   dim: { opacity: 0.6 },
   section: { fontSize: FontSize.base, fontWeight: FontWeight.medium, color: Brand.text, marginTop: space.lg, marginBottom: space.sm },
+  sectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: space.sm },
+  inlineAction: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 6, paddingHorizontal: 8 },
+  inlineActionText: { fontSize: FontSize.sm, color: Brand.primary, fontWeight: FontWeight.medium },
   linkText: { fontSize: FontSize.sm, color: Brand.primary, fontWeight: FontWeight.medium },
   empty: { fontSize: FontSize.sm, color: Brand.textMuted },
   subCard: { backgroundColor: Brand.surface, borderWidth: 1, borderColor: Brand.border, borderRadius: Radius.md, padding: space.md, marginBottom: space.sm, gap: 4 },

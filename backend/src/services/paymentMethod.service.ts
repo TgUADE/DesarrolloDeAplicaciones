@@ -52,6 +52,7 @@ export const paymentMethodService = {
       titularTarjeta?: string;
       vencimiento?: string;
       montoGarantia?: number;
+      montoDisponible?: number;
     },
   ) {
     if (!PAYMENT_TYPES.includes(data.tipo)) throw { status: 400, message: 'Tipo de medio de pago inválido' };
@@ -72,10 +73,15 @@ export const paymentMethodService = {
         throw { status: 400, message: 'Se deben informar los últimos 4 dígitos de la tarjeta' };
       }
     }
-    if (data.tipo === 'cheque_certificado' && (!data.montoGarantia || Number(data.montoGarantia) <= 0)) {
+    const montoDisponible = Number(data.montoDisponible ?? data.montoGarantia ?? 0);
+    if (!Number.isFinite(montoDisponible) || montoDisponible <= 0) {
+      throw { status: 400, message: 'El monto disponible del medio de pago es obligatorio y debe ser mayor a cero' };
+    }
+    const montoGarantia = data.tipo === 'cheque_certificado' ? Number(data.montoGarantia ?? montoDisponible) : data.montoGarantia;
+    if (data.tipo === 'cheque_certificado' && (!montoGarantia || Number(montoGarantia) <= 0)) {
       throw { status: 400, message: 'El monto de garantía del cheque es obligatorio y debe ser mayor a cero' };
     }
-    return prisma.paymentMethod.create({ data: { ...data, personaId } });
+    return prisma.paymentMethod.create({ data: { ...data, montoDisponible, montoGarantia, personaId } });
   },
 
   async update(
@@ -89,10 +95,14 @@ export const paymentMethodService = {
       titularTarjeta: string;
       vencimiento: string;
       montoGarantia: number;
+      montoDisponible: number;
     }>,
   ) {
     const pm = await prisma.paymentMethod.findFirst({ where: { id, personaId } });
     if (!pm) throw { status: 404, message: 'Medio de pago no encontrado' };
+    if (data.montoDisponible != null && (!Number.isFinite(Number(data.montoDisponible)) || Number(data.montoDisponible) <= 0)) {
+      throw { status: 400, message: 'El monto disponible debe ser mayor a cero' };
+    }
     return prisma.paymentMethod.update({ where: { id }, data });
   },
 

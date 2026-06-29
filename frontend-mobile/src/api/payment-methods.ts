@@ -17,6 +17,7 @@ export interface PaymentMethodPayload {
   titularTarjeta?: string;
   vencimiento?: string;
   montoGarantia?: number;
+  montoDisponible?: number;
 }
 
 export async function addPaymentMethod(userId: string, payload: PaymentMethodPayload): Promise<void> {
@@ -34,6 +35,7 @@ export interface PaymentMethod {
   numeroCuenta?: string | null;
   numeroTarjeta?: string | null;
   montoGarantia?: number | string | null;
+  montoDisponible?: number | string | null;
 }
 
 /** DELETE /api/users/:id/payment-methods/:pmId → da de baja un medio de pago. */

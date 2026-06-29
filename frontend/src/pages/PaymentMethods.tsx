@@ -69,8 +69,14 @@ export default function PaymentMethods({ onCountChange }: Props) {
 
   const datos = (pm: AdminPaymentMethod) => {
     if (pm.tipo.startsWith('tarjeta')) return `${pm.banco ?? ''} ····${pm.numeroTarjeta ?? ''}`.trim();
-    if (pm.tipo === 'cheque_certificado') return `Garantía: ${pm.montoGarantia ?? '—'}`;
+    if (pm.tipo === 'cheque_certificado') return `Garantía: ${pm.montoGarantia ?? pm.montoDisponible ?? '—'}`;
     return `${pm.banco ?? ''}${pm.numeroCuenta ? ` · ${pm.numeroCuenta}` : ''}`.trim() || '—';
+  };
+
+  const money = (n: unknown, cur: string) => {
+    const value = Number(n ?? 0);
+    if (!Number.isFinite(value) || value <= 0) return '—';
+    return value.toLocaleString('es-AR', { style: 'currency', currency: cur === 'USD' ? 'USD' : 'ARS', maximumFractionDigits: 0 });
   };
 
   return (
@@ -101,6 +107,7 @@ export default function PaymentMethods({ onCountChange }: Props) {
                   <th>Usuario</th>
                   <th>Tipo</th>
                   <th>Moneda</th>
+                  <th>Monto</th>
                   <th>Datos</th>
                   <th>Estado</th>
                   <th>Acciones</th>
@@ -108,7 +115,7 @@ export default function PaymentMethods({ onCountChange }: Props) {
               </thead>
               <tbody>
                 {pms.length === 0 ? (
-                  <tr className="empty-row"><td colSpan={6}>No hay medios de pago en este estado</td></tr>
+                  <tr className="empty-row"><td colSpan={7}>No hay medios de pago en este estado</td></tr>
                 ) : (
                   pms.map((pm) => {
                     const m = ESTADO_META[pm.estado] ?? { label: pm.estado, badge: 'badge-gray' };
@@ -120,6 +127,7 @@ export default function PaymentMethods({ onCountChange }: Props) {
                         </td>
                         <td>{TYPE_LABEL[pm.tipo] ?? pm.tipo}</td>
                         <td><span className="badge badge-gray">{pm.moneda}</span></td>
+                        <td><strong>{money(pm.montoDisponible ?? pm.montoGarantia, pm.moneda === 'USD' ? 'USD' : 'ARS')}</strong></td>
                         <td style={{ color: '#64748b', fontSize: 13 }}>{datos(pm)}</td>
                         <td><span className={`badge ${m.badge}`}>{m.label}</span></td>
                         <td>

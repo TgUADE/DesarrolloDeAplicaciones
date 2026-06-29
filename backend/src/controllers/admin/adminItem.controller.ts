@@ -10,7 +10,7 @@ export const adminItemController = {
       const { nroPoliza, compania, importe, polizaCombinada } = req.body;
       const seguro = await itemService.upsertInsurance(parseInt(req.params.id), { nroPoliza, compania, importe: Number(importe), polizaCombinada });
       return ok(res, seguro);
-    } catch (err: any) { return serverError(res, err.message); }
+    } catch (err: any) { return res.status(err.status || 500).json({ success: false, error: err.message }); }
   },
 
   async upsertLocation(req: Request, res: Response) {

@@ -162,8 +162,7 @@ export default function ResumenCompra() {
           <View style={styles.pieceRow}>
             {cover ? <Image source={{ uri: cover }} style={styles.pieceImg} contentFit="cover" /> : <View style={[styles.pieceImg, styles.pieceImgEmpty]}><Ionicons name="image-outline" size={22} color={Brand.textMuted} /></View>}
             <View style={{ flex: 1 }}>
-              <Text style={styles.pieceTitle}>{p.producto?.descripcionCompleta ?? `Pieza #${p.producto?.numeroPieza ?? p.identificador}`}</Text>
-              {p.producto?.numeroPieza ? <Text style={styles.muted}>{p.producto.numeroPieza}</Text> : null}
+              <Text style={styles.pieceTitle}>{p.producto?.descripcionCompleta ?? 'Pieza adquirida'}</Text>
               {p.subastaTitulo ? <Text style={styles.muted}>Subasta: {p.subastaTitulo}</Text> : null}
             </View>
           </View>

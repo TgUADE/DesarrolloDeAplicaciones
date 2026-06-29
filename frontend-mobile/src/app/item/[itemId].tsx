@@ -78,7 +78,7 @@ export default function DetallePieza() {
             )}
 
             <View style={styles.content}>
-              <Badge label={`Pieza #${item.numeroPieza}`} color={Brand.primary} />
+              <Badge label="Pieza" color={Brand.primary} />
               <Text style={styles.title}>{item.descripcion}</Text>
 
               {isGuest ? (

@@ -80,7 +80,7 @@ export default function MisCompras() {
                 <View style={styles.cardBody}>
                   <View style={styles.rowBetween}>
                     <Text style={styles.title} numberOfLines={1}>
-                      {p.producto?.descripcionCompleta ?? `Pieza #${p.producto?.numeroPieza ?? p.identificador}`}
+                      {p.producto?.descripcionCompleta ?? 'Pieza adquirida'}
                     </Text>
                     <Badge label={meta.label} color={meta.color} />
                   </View>

@@ -3,16 +3,13 @@ import {
   getSubmissions,
   offerSubmission,
   markSubmissionReceived,
-  appraiseSubmission,
   rejectSubmission,
   imageUrl,
   type Submission,
 } from '../api';
 
 const STATUS_TABS = [
-  { value: 'pendiente_empresa', label: 'Por ofertar' },
-  { value: 'enviado', label: 'Por recibir' },
-  { value: 'recibido', label: 'Por tasar' },
+  { value: 'pendiente_empresa', label: 'Por responder' },
   { value: '', label: 'Todas' },
 ];
 
@@ -22,11 +19,10 @@ const STATUS_META: Record<string, { label: string; badge: string }> = {
   por_enviar: { label: 'Aceptó · a enviar', badge: 'badge-blue' },
   enviado: { label: 'Enviado', badge: 'badge-blue' },
   recibido: { label: 'Recibido · a tasar', badge: 'badge-purple' },
-  tasacion_final: { label: 'Tasación enviada', badge: 'badge-purple' },
   aceptada_usuario: { label: 'Aceptada · disponible', badge: 'badge-green' },
   rechazada_empresa: { label: 'Rechazada (empresa)', badge: 'badge-red' },
   rechazada_usuario: { label: 'Rechazó la oferta', badge: 'badge-gray' },
-  rechazada_final: { label: 'Rechazó la tasación', badge: 'badge-gray' },
+  rechazada_final: { label: 'Rechazó la propuesta', badge: 'badge-gray' },
 };
 
 const money = (n?: number | string | null, moneda?: string | null) =>
@@ -38,7 +34,7 @@ interface Props {
   onCountChange: (n: number) => void;
 }
 
-type ActionType = 'offer' | 'appraisal' | 'reject' | null;
+type ActionType = 'offer' | 'reject' | null;
 
 export default function Submissions({ onCountChange }: Props) {
   const [items, setItems] = useState<Submission[]>([]);
@@ -48,9 +44,9 @@ export default function Submissions({ onCountChange }: Props) {
 
   const [selected, setSelected] = useState<Submission | null>(null);
   const [action, setAction] = useState<ActionType>(null);
-  const [valor, setValor] = useState('');
   const [direccion, setDireccion] = useState('');
   const [base, setBase] = useState('');
+  const [fechaSubasta, setFechaSubasta] = useState('');
   const [comisionPct, setComisionPct] = useState('10');
   const [comisiones, setComisiones] = useState('');
   const [motivo, setMotivo] = useState('');
@@ -79,41 +75,31 @@ export default function Submissions({ onCountChange }: Props) {
   };
 
   const openOffer = (s: Submission) => {
-    setSelected(s); setAction('offer'); setValor(''); setDireccion('');
-  };
-  const openAppraisal = (s: Submission) => {
-    setSelected(s); setAction('appraisal');
-    setBase(s.valorOfrecido != null ? String(s.valorOfrecido) : '');
+    setSelected(s); setAction('offer'); setDireccion(''); setBase(''); setFechaSubasta('');
     setComisionPct('10'); setComisiones('Comisión de venta');
   };
 
   const handleOffer = async () => {
-    if (!selected || !valor) return;
+    if (!selected || !base || !fechaSubasta) return;
     setSaving(true);
     try {
-      await offerSubmission(selected.id, parseFloat(valor), direccion || undefined);
-      setAction(null); setSelected(null); setValor(''); setDireccion('');
+      await offerSubmission(selected.id, parseFloat(base), parseFloat(comisionPct || '0'), fechaSubasta, comisiones, direccion || undefined);
+      setAction(null); setSelected(null); setDireccion(''); setBase(''); setFechaSubasta('');
       load();
-    } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Error al ofrecer'); } finally { setSaving(false); }
+    } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Error al enviar propuesta'); } finally { setSaving(false); }
   };
 
   const handleReceived = async (s: Submission) => {
+    const deposito = window.prompt('Depósito donde queda guardada la pieza', 'Depósito Central');
+    if (deposito === null) return;
+    const ubicacion = window.prompt('Ubicación / estante de la pieza', '');
+    if (ubicacion === null) return;
     setSaving(true);
     try {
-      await markSubmissionReceived(s.id);
+      await markSubmissionReceived(s.id, deposito.trim() || undefined, ubicacion.trim() || undefined);
       setSelected(null);
       load();
     } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Error'); } finally { setSaving(false); }
-  };
-
-  const handleAppraisal = async () => {
-    if (!selected || !base) return;
-    setSaving(true);
-    try {
-      await appraiseSubmission(selected.id, parseFloat(base), parseFloat(comisionPct || '0'), comisiones);
-      setAction(null); setSelected(null); setBase('');
-      load();
-    } catch (e: unknown) { setError(e instanceof Error ? e.message : 'Error al tasar'); } finally { setSaving(false); }
   };
 
   const handleReject = async () => {
@@ -137,7 +123,7 @@ export default function Submissions({ onCountChange }: Props) {
     <>
       <div className="page-header">
         <h1>Solicitudes de venta</h1>
-        <p>Oferta inicial → envío → recepción → tasación final. El vendedor no fija precio.</p>
+        <p>El admin envía precio base, fecha y comisión. Cuando recibe el bien, se asigna depósito y seguro automáticamente.</p>
       </div>
 
       {error && <div className="error-banner">⚠️ {error}</div>}
@@ -199,13 +185,10 @@ export default function Submissions({ onCountChange }: Props) {
                         <td>
                           <div className="action-row">
                             {s.status === 'pendiente_empresa' && (
-                              <button className="btn btn-sm btn-success" onClick={() => openOffer(s)}>Ofrecer valor</button>
+                              <button className="btn btn-sm btn-success" onClick={() => openOffer(s)}>Enviar propuesta</button>
                             )}
                             {s.status === 'enviado' && (
                               <button className="btn btn-sm btn-success" disabled={saving} onClick={() => handleReceived(s)}>Marcar recibido</button>
-                            )}
-                            {s.status === 'recibido' && (
-                              <button className="btn btn-sm btn-success" onClick={() => openAppraisal(s)}>Tasación final</button>
                             )}
                             <button className="btn btn-sm btn-primary" onClick={() => { setSelected(s); setAction(null); }}>Ver</button>
                           </div>
@@ -238,12 +221,13 @@ export default function Submissions({ onCountChange }: Props) {
                 <span className="lbl">Estado</span>
                 <span className="val"><span className={`badge ${meta(selected.status).badge}`}>{meta(selected.status).label}</span></span>
               </div>
-              {selected.valorOfrecido != null && (
+              {selected.valorOfrecido != null && selected.precioBaseOfrecido == null && (
                 <div className="info-row"><span className="lbl">Valor ofrecido</span><span className="val">{money(selected.valorOfrecido, selected.moneda)}</span></div>
               )}
               {selected.precioBaseOfrecido != null && (
-                <div className="info-row"><span className="lbl">Tasación final</span><span className="val"><strong>{money(selected.precioBaseOfrecido, selected.moneda)}</strong>{selected.comisionPorcentaje != null ? ` · comisión ${Number(selected.comisionPorcentaje)}%` : ''}</span></div>
+                <div className="info-row"><span className="lbl">Propuesta</span><span className="val"><strong>{money(selected.precioBaseOfrecido, selected.moneda)}</strong>{selected.comisionPorcentaje != null ? ` · comisión ${Number(selected.comisionPorcentaje)}%` : ''}</span></div>
               )}
+              {selected.fechaSubastaEstimada && <div className="info-row"><span className="lbl">Fecha estimada de subasta</span><span className="val">{fmt(selected.fechaSubastaEstimada)}</span></div>}
               {selected.cuentaCobro && <div className="info-row"><span className="lbl">Cuenta destino</span><span className="val">{selected.cuentaCobro}</span></div>}
               {selected.enviadoAt && <div className="info-row"><span className="lbl">Enviado</span><span className="val">{fmt(selected.enviadoAt)}</span></div>}
               {selected.recibidoAt && <div className="info-row"><span className="lbl">Recibido</span><span className="val">{fmt(selected.recibidoAt)}</span></div>}
@@ -277,18 +261,17 @@ export default function Submissions({ onCountChange }: Props) {
                 <strong>Motivo de rechazo:</strong> {selected.motivoRechazo}
               </div>
             )}
-            {['oferta_inicial', 'por_enviar', 'tasacion_final'].includes(selected.status) && (
+            {['oferta_inicial', 'por_enviar'].includes(selected.status) && (
               <div style={{ background: '#eef2ff', borderRadius: 6, padding: '10px 14px', fontSize: 13, marginBottom: 16, color: '#3730a3' }}>
-                {selected.status === 'oferta_inicial' && '⏳ Esperando que el vendedor acepte o rechace la oferta.'}
+                {selected.status === 'oferta_inicial' && '⏳ Esperando que el vendedor acepte o rechace la propuesta.'}
                 {selected.status === 'por_enviar' && '⏳ El vendedor aceptó. Esperando que envíe el ítem al depósito.'}
-                {selected.status === 'tasacion_final' && '⏳ Esperando que el vendedor acepte o rechace la tasación final.'}
               </div>
             )}
 
             <div className="modal-actions">
               {selected.status === 'pendiente_empresa' && (
                 <>
-                  <button className="btn btn-success" onClick={() => openOffer(selected)}>💲 Ofrecer valor</button>
+                  <button className="btn btn-success" onClick={() => openOffer(selected)}>💲 Enviar propuesta</button>
                   <button className="btn btn-danger" onClick={() => setAction('reject')}>❌ Rechazar</button>
                 </>
               )}
@@ -297,9 +280,6 @@ export default function Submissions({ onCountChange }: Props) {
               )}
               {selected.status === 'enviado' && (
                 <button className="btn btn-success" disabled={saving} onClick={() => handleReceived(selected)}>📦 Marcar recibido</button>
-              )}
-              {selected.status === 'recibido' && (
-                <button className="btn btn-success" onClick={() => openAppraisal(selected)}>💲 Tasación final</button>
               )}
               <button className="btn btn-secondary" onClick={() => setSelected(null)}>Cerrar</button>
             </div>
@@ -311,48 +291,32 @@ export default function Submissions({ onCountChange }: Props) {
       {selected && action === 'offer' && (
         <div className="modal-overlay" onClick={() => setAction(null)}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <h2>💲 Ofrecer valor</h2>
+            <h2>💲 Enviar propuesta</h2>
             <p style={{ fontSize: 13, color: '#64748b', marginBottom: 16 }}>
-              Ofrecé un valor inicial por la pieza. El vendedor lo acepta o rechaza; si acepta, deberá enviarla a la dirección indicada para inspección.
-            </p>
-            <div className="form-group">
-              <label>Valor ofrecido ({selected.moneda || 'ARS'})</label>
-              <input type="number" min="0" step="100" value={valor} onChange={(e) => setValor(e.target.value)} placeholder="ej: 50000" autoFocus />
-            </div>
-            <div className="form-group">
-              <label>Dirección de envío (opcional — hay una por defecto)</label>
-              <input value={direccion} onChange={(e) => setDireccion(e.target.value)} placeholder="Casa Central — Av. Corrientes 1234, CABA" />
-            </div>
-            <div className="modal-actions">
-              <button className="btn btn-success" onClick={handleOffer} disabled={saving || !valor}>{saving ? 'Guardando...' : 'Enviar oferta'}</button>
-              <button className="btn btn-secondary" onClick={() => setAction(null)}>Cancelar</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Appraisal action */}
-      {selected && action === 'appraisal' && (
-        <div className="modal-overlay" onClick={() => setAction(null)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <h2>💲 Tasación final</h2>
-            <p style={{ fontSize: 13, color: '#64748b', marginBottom: 16 }}>
-              Cargá el precio base de salida y la comisión. El vendedor acepta (la pieza va a subasta) o rechaza (se devuelve con envío a su cargo).
+              Cargá precio base, fecha estimada, comisión y dirección de envío. Si el vendedor acepta, envía la pieza para inspección.
             </p>
             <div className="form-group">
               <label>Precio base de salida ({selected.moneda || 'ARS'})</label>
               <input type="number" min="0" step="100" value={base} onChange={(e) => setBase(e.target.value)} placeholder="ej: 50000" autoFocus />
             </div>
             <div className="form-group">
+              <label>Fecha estimada de subasta</label>
+              <input type="date" value={fechaSubasta} onChange={(e) => setFechaSubasta(e.target.value)} required />
+            </div>
+            <div className="form-group">
               <label>Comisión (%)</label>
               <input type="number" min="0" max="100" step="0.5" value={comisionPct} onChange={(e) => setComisionPct(e.target.value)} placeholder="ej: 10" />
             </div>
             <div className="form-group">
-              <label>Detalle de comisiones (texto)</label>
+              <label>Detalle de comisiones</label>
               <input value={comisiones} onChange={(e) => setComisiones(e.target.value)} placeholder="Ej: Comisión de venta + gastos" />
             </div>
+            <div className="form-group">
+              <label>Dirección de envío o retiro (opcional — hay una por defecto)</label>
+              <input value={direccion} onChange={(e) => setDireccion(e.target.value)} placeholder="Casa Central — Av. Corrientes 1234, CABA" />
+            </div>
             <div className="modal-actions">
-              <button className="btn btn-success" onClick={handleAppraisal} disabled={saving || !base}>{saving ? 'Guardando...' : 'Enviar tasación'}</button>
+              <button className="btn btn-success" onClick={handleOffer} disabled={saving || !base || !fechaSubasta}>{saving ? 'Guardando...' : 'Enviar propuesta'}</button>
               <button className="btn btn-secondary" onClick={() => setAction(null)}>Cancelar</button>
             </div>
           </div>

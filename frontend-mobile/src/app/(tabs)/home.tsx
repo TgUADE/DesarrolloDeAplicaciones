@@ -1,8 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -55,12 +55,6 @@ export default function HomeSubastas() {
   const [total, setTotal] = useState(0);
   const isSearch = query.trim().length > 0;
 
-  useEffect(() => {
-    getStoredUser().then(setUser);
-    isGuestSession().then(setIsGuest);
-    load();
-  }, []);
-
   const load = async () => {
     setLoading(true);
     setError('');
@@ -72,6 +66,14 @@ export default function HomeSubastas() {
       setLoading(false);
     }
   };
+
+  useFocusEffect(
+    useCallback(() => {
+      getStoredUser().then(setUser);
+      isGuestSession().then(setIsGuest);
+      load();
+    }, []),
+  );
 
   // Búsqueda con debounce
   useEffect(() => {

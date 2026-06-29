@@ -126,6 +126,12 @@ export const adminUserController = {
       if (!['pendiente', 'aprobada', 'rechazada'].includes(nuevoEstado)) {
         return badRequest(res, 'Estado inválido');
       }
+      const actual = await prisma.paymentMethod.findUnique({ where: { id: req.params.pmId } });
+      if (!actual) return notFound(res, 'Medio de pago no encontrado');
+      const montoDisponible = Number(actual.montoDisponible ?? actual.montoGarantia ?? 0);
+      if (nuevoEstado === 'aprobada' && (!Number.isFinite(montoDisponible) || montoDisponible <= 0)) {
+        return badRequest(res, 'No se puede aprobar un medio de pago sin monto disponible declarado');
+      }
       const pm = await prisma.paymentMethod.update({
         where: { id: req.params.pmId },
         data: { estado: nuevoEstado, verificado: nuevoEstado === 'aprobada' },

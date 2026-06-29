@@ -10,11 +10,18 @@ export const adminSubmissionController = {
     } catch (err: any) { return serverError(res, err.message); }
   },
 
-  // [Admin] Ofrece un valor inicial (+ dirección de envío) → el vendedor acepta/rechaza.
+  // [Admin] Envía propuesta completa → el vendedor acepta y envía el bien, o rechaza.
   async offer(req: Request, res: Response) {
     try {
-      const { valorOfrecido, direccionEnvio } = req.body;
-      const sub = await submissionService.adminOffer(req.params.id, Number(valorOfrecido), direccionEnvio);
+      const { valorOfrecido, precioBaseOfrecido, comisionPorcentaje, fechaSubastaEstimada, comisionesInfo, direccionEnvio } = req.body;
+      const sub = await submissionService.adminOffer(
+        req.params.id,
+        Number(precioBaseOfrecido ?? valorOfrecido),
+        Number(comisionPorcentaje),
+        new Date(fechaSubastaEstimada),
+        comisionesInfo,
+        direccionEnvio,
+      );
       return ok(res, sub);
     } catch (err: any) {
       return res.status(err.status || 500).json({ success: false, error: err.message });
@@ -24,18 +31,8 @@ export const adminSubmissionController = {
   // [Admin] Marca el ítem como recibido en el depósito.
   async received(req: Request, res: Response) {
     try {
-      const sub = await submissionService.adminMarkReceived(req.params.id);
-      return ok(res, sub);
-    } catch (err: any) {
-      return res.status(err.status || 500).json({ success: false, error: err.message });
-    }
-  },
-
-  // [Admin] Tasación final + % de comisión.
-  async appraisal(req: Request, res: Response) {
-    try {
-      const { precioBaseOfrecido, comisionPorcentaje, comisionesInfo } = req.body;
-      const sub = await submissionService.adminFinalAppraisal(req.params.id, Number(precioBaseOfrecido), Number(comisionPorcentaje), comisionesInfo);
+      const { deposito, ubicacion } = req.body;
+      const sub = await submissionService.adminMarkReceived(req.params.id, { deposito, ubicacion });
       return ok(res, sub);
     } catch (err: any) {
       return res.status(err.status || 500).json({ success: false, error: err.message });

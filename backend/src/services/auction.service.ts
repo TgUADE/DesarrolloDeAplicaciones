@@ -6,6 +6,7 @@ import { messageService } from './message.service';
 import { getPagination } from '../utils/pagination';
 import { fromSiNo, toSiNo } from '../utils/siNo';
 import { mapItem, flattenPersonaLite } from '../utils/flatten';
+import { catalogService } from './catalog.service';
 import { getSystemEmpleadoId, getEmpresaClienteId } from '../utils/systemEmpleado';
 
 // Include para mapear un ItemCatalogo al shape plano `Item` (frontend-mobile).
@@ -23,6 +24,41 @@ const itemDetailInclude = {
 import { Request } from 'express';
 
 export const ITEM_TIMER_MS = 60 * 60 * 1000;
+const PURCHASE_COMMISSION_RATE = 0.05;
+const PURCHASE_SHIPPING_RATE = 0.02;
+const BLOCKING_PURCHASE_STATUSES = ['derivado_justicia'];
+const FINE_RATE = 0.1;
+
+function estimatePurchaseTotal(importe: number): number {
+  return importe + importe * PURCHASE_COMMISSION_RATE + Math.round(importe * PURCHASE_SHIPPING_RATE);
+}
+
+function paymentMethodAvailableAmount(pm: { montoDisponible?: unknown; montoGarantia?: unknown } | null | undefined): number {
+  return Number(pm?.montoDisponible ?? pm?.montoGarantia ?? 0);
+}
+
+async function getPendingPaymentMethodCommitment(tx: any, personaId: number, paymentMethodId: string, moneda: string): Promise<number> {
+  const comprasPendientes = await tx.registroDeSubasta.findMany({
+    where: {
+      clienteId: personaId,
+      app: {
+        status: { in: ['pendiente_pago', 'multa_aplicada'] },
+        paymentMethodId,
+        moneda,
+      },
+    },
+    select: { importe: true, comision: true, app: { select: { costoEnvio: true, multa: true } } },
+  });
+  return comprasPendientes.reduce(
+    (sum: number, r: any) =>
+      sum +
+      Number(r.importe ?? 0) +
+      Number(r.comision ?? 0) +
+      Number(r.app?.costoEnvio ?? 0) +
+      Number(r.app?.multa ?? 0),
+    0,
+  );
+}
 
 // Persona "lite" para postores/rematadores: apellido vive en personas_app.
 const personaLiteInclude = { select: { identificador: true, nombre: true, app: { select: { apellido: true } } } } as const;
@@ -186,6 +222,14 @@ export const auctionService = {
       throw { status: 403, message: 'Tu categoría no permite acceder a esta subasta' };
     }
 
+    const blockingPurchase = await prisma.registroDeSubasta.findFirst({
+      where: { clienteId: personaId, app: { status: { in: BLOCKING_PURCHASE_STATUSES } } },
+      include: { app: true },
+    });
+    if (blockingPurchase?.app?.status === 'derivado_justicia') {
+      throw { status: 403, message: 'Tu cuenta está bloqueada por una compra derivada a la justicia.' };
+    }
+
     const activeParticipation = await prisma.asistente.findFirst({ where: { clienteId: personaId, subastaId: { not: subastaId }, app: { isActive: true } } });
     if (activeParticipation) throw { status: 409, message: 'Ya estás conectado a otra subasta' };
 
@@ -226,6 +270,14 @@ export const auctionService = {
       // El dueño de la pieza no puede pujar por su propio ítem.
       if (itemCatalogo.producto?.duenioId === personaId) throw { status: 403, message: 'No podés pujar por tu propio ítem' };
 
+      const blockingPurchase = await tx.registroDeSubasta.findFirst({
+        where: { clienteId: personaId, app: { status: { in: BLOCKING_PURCHASE_STATUSES } } },
+        include: { app: true },
+      });
+      if (blockingPurchase?.app?.status === 'derivado_justicia') {
+        throw { status: 403, message: 'Tu cuenta está bloqueada por una compra derivada a la justicia.' };
+      }
+
       const pm = persona.paymentMethods[0];
       if (!pm) throw { status: 403, message: 'Medio de pago no encontrado o no verificado' };
 
@@ -233,15 +285,12 @@ export const auctionService = {
       if (!paymentMethodService.covers(pm.moneda, moneda)) {
         throw { status: 400, message: `Necesitás un medio de pago en ${moneda} para pujar en esta subasta` };
       }
-
-      if (pm.tipo === 'cheque_certificado' && pm.montoGarantia) {
-        const agg = await tx.registroDeSubasta.aggregate({
-          where: { clienteId: personaId, app: { status: { in: ['pendiente_pago', 'multa_aplicada'] } } },
-          _sum: { importe: true },
-        });
-        const usedAmount = Number(agg._sum?.importe ?? 0);
-        if (usedAmount + monto > Number(pm.montoGarantia)) throw { status: 400, message: 'El monto supera tu garantía de cheque certificado' };
+      if (paymentMethodAvailableAmount(pm) <= 0) {
+        throw { status: 400, message: 'El medio de pago no tiene monto disponible declarado' };
       }
+
+      // Si el monto disponible no alcanza, la puja se permite. Si gana, la compra
+      // se registra con multa del 10% al cerrar el ítem.
 
       const pendingBid = await tx.pujo.findFirst({ where: { asistenteId: asistente.identificador, itemId: currentItemId, app: { confirmada: false } } });
       if (pendingBid) throw { status: 409, message: 'Ya tenés una puja pendiente de confirmación' };
@@ -294,15 +343,23 @@ export const auctionService = {
       ]);
       if (!itemCatalogo) throw { status: 404, message: 'Ítem no encontrado' };
 
-      const COMMISSION_RATE = 0.05;
-      const SHIPPING_RATE = 0.02; // costo de envío estimado a la dirección declarada
       let registro = null;
 
       if (lastBid) {
         // Adjudicación al mejor postor.
         const importe = Number(lastBid.importe);
-        const comision = importe * COMMISSION_RATE;
-        const costoEnvio = Math.round(importe * SHIPPING_RATE);
+        const comision = importe * PURCHASE_COMMISSION_RATE;
+        const costoEnvio = Math.round(importe * PURCHASE_SHIPPING_RATE);
+        const paymentMethod = lastBid.app?.paymentMethodId
+          ? await tx.paymentMethod.findUnique({ where: { id: lastBid.app.paymentMethodId } })
+          : null;
+        const pendingCommitment = paymentMethod
+          ? await getPendingPaymentMethodCommitment(tx, lastBid.asistente.clienteId, paymentMethod.id, moneda)
+          : 0;
+        const purchaseTotal = estimatePurchaseTotal(importe);
+        const insufficientFunds = paymentMethod ? pendingCommitment + purchaseTotal > paymentMethodAvailableAmount(paymentMethod) : false;
+        const multa = insufficientFunds ? importe * FINE_RATE : null;
+        const pagoVencimientoAt = insufficientFunds ? new Date(Date.now() + 72 * 60 * 60 * 1000) : null;
         registro = await tx.registroDeSubasta.create({
           data: {
             subastaId,
@@ -311,7 +368,17 @@ export const auctionService = {
             clienteId: lastBid.asistente.clienteId,
             importe: lastBid.importe,
             comision,
-            app: { create: { moneda, status: 'pendiente_pago', paymentMethodId: lastBid.app?.paymentMethodId ?? null, costoEnvio } },
+            app: {
+              create: {
+                moneda,
+                status: insufficientFunds ? 'multa_aplicada' : 'pendiente_pago',
+                paymentMethodId: lastBid.app?.paymentMethodId ?? null,
+                costoEnvio,
+                multa,
+                multaAplicadaAt: insufficientFunds ? new Date() : null,
+                pagoVencimientoAt,
+              },
+            },
           },
         });
         // Marcar la puja ganadora.
@@ -327,10 +394,18 @@ export const auctionService = {
           costoEnvio,
           moneda,
         );
+        if (insufficientFunds) {
+          await messageService.create(
+            lastBid.asistente.clienteId,
+            'Multa aplicada por fondos insuficientes',
+            `Tu medio de pago no cubre el total estimado de la compra. Se aplicó una multa del 10% (${moneda} ${multa}) y tenés 72 horas para presentar los fondos.`,
+            'multa',
+          );
+        }
       } else {
         // Nadie pujó: la empresa compra la pieza al valor base.
         const empresaClienteId = await getEmpresaClienteId();
-        const comision = Number(itemCatalogo.precioBase) * COMMISSION_RATE;
+        const comision = Number(itemCatalogo.precioBase) * PURCHASE_COMMISSION_RATE;
         registro = await tx.registroDeSubasta.create({
           data: {
             subastaId,
@@ -419,18 +494,7 @@ export const auctionService = {
       catalogo = await prisma.catalogo.create({ data: { subastaId, descripcion: `Catálogo Subasta ${subastaId}`, responsableId: await getSystemEmpleadoId() } });
     }
 
-    const count = await prisma.itemCatalogo.count({ where: { catalogoId: catalogo.identificador } });
-    const itemCatalogo = await prisma.itemCatalogo.create({
-      data: {
-        catalogoId: catalogo.identificador,
-        productoId,
-        precioBase: precioBase ?? 0,
-        comision: comision ?? 0,
-        app: { create: { status: 'en_subasta', ordenEnSubasta: count + 1 } },
-      },
-    });
-    await prisma.producto.update({ where: { identificador: productoId }, data: { app: { update: { status: 'en_subasta' } } } });
-    return itemCatalogo;
+    return catalogService.addItem(catalogo.identificador, productoId, precioBase, comision);
   },
 
   async getParticipants(subastaId: number) {
@@ -493,15 +557,18 @@ export const auctionService = {
     if (!subasta) throw { status: 404, message: 'Subasta no encontrada' };
     if (subasta.estado === 'abierta') throw { status: 409, message: 'La subasta ya está abierta' };
     if (subasta.estado === 'cerrada' || subasta.estado === 'finalizada') throw { status: 400, message: 'La subasta ya finalizó' };
+    const catalogo = await prisma.catalogo.findFirst({ where: { subastaId: id }, select: { identificador: true } });
+    if (!catalogo) throw { status: 400, message: 'La subasta no tiene un catálogo asignado' };
     // Al abrir la subasta arranca automáticamente el primer ítem del catálogo.
     const first = await prisma.itemCatalogo.findFirst({
       where: { catalogo: { subastaId: id }, app: { status: 'en_subasta' } },
       orderBy: { app: { ordenEnSubasta: 'asc' } },
     });
-    const endsAt = first ? new Date(Date.now() + ITEM_TIMER_MS) : null;
+    if (!first) throw { status: 400, message: 'El catálogo de la subasta no tiene ítems disponibles' };
+    const endsAt = new Date(Date.now() + ITEM_TIMER_MS);
     const s = await prisma.subasta.update({
       where: { identificador: id },
-      data: { estado: 'abierta', app: { update: { currentItemId: first?.identificador ?? null, currentItemEndsAt: endsAt } } },
+      data: { estado: 'abierta', app: { update: { currentItemId: first.identificador, currentItemEndsAt: endsAt } } },
       include: subastaInclude,
     });
     return mapSubasta(s);
