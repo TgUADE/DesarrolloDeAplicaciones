@@ -32,7 +32,8 @@ FROM node:20-slim AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 
-RUN apt-get update -y && apt-get install -y --no-install-recommends openssl ca-certificates \
+# curl: lo usa el healthcheck de Coolify (corre dentro del container contra /health)
+RUN apt-get update -y && apt-get install -y --no-install-recommends openssl ca-certificates curl \
     && rm -rf /var/lib/apt/lists/*
 
 # Artefactos del builder
