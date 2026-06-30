@@ -1,0 +1,21 @@
+# Dependencias y artefactos: se reinstalan/compilan dentro de la imagen
+node_modules
+dist
+
+# Secretos y entornos locales: las env vars se inyectan desde Coolify
+.env
+.env.*
+
+# Archivos subidos por usuarios (van en un volumen persistente, no en la imagen)
+uploads/documents/*
+uploads/items/*
+uploads/submissions/*
+
+# Git y basura del SO
+.git
+.gitignore
+.DS_Store
+
+# Logs
+*.log
+npm-debug.log*

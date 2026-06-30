@@ -1,5 +1,8 @@
-const BASE = 'http://localhost:3000/api';
-export const ASSET_HOST = BASE.replace(/\/api$/, '');
+// Host del backend: en producción se inyecta VITE_API_URL en el build (ver Dockerfile);
+// si no está definida, cae al backend local para desarrollo.
+const API_HOST = (import.meta.env.VITE_API_URL || 'http://localhost:3000').replace(/\/+$/, '');
+const BASE = `${API_HOST}/api`;
+export const ASSET_HOST = API_HOST;
 
 /** Resuelve la URL de una imagen (absoluta o relativa a /uploads del backend). */
 export function imageUrl(u?: string | null): string | undefined {
