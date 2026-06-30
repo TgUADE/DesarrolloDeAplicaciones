@@ -1,6 +1,10 @@
 // Host del backend: en producción se inyecta VITE_API_URL en el build (ver Dockerfile);
 // si no está definida, cae al backend local para desarrollo.
-const API_HOST = (import.meta.env.VITE_API_URL || 'http://localhost:3000').replace(/\/+$/, '');
+// Se limpian comillas/espacios sobrantes (algunos inyectores de env los agregan) y la barra final.
+const API_HOST = (import.meta.env.VITE_API_URL || 'http://localhost:3000')
+  .trim()
+  .replace(/^['"]+|['"]+$/g, '')
+  .replace(/\/+$/, '');
 const BASE = `${API_HOST}/api`;
 export const ASSET_HOST = API_HOST;
 
