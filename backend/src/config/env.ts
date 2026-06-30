@@ -9,23 +9,21 @@ function required(key: string): string {
 
 function getLocalIpAddress() {
   const interfaces = os.networkInterfaces();
-  const VIRTUAL = [
-    /^10\.0\.2\./,              // Android emulator virtual network
-    /^172\.(1[6-9]|2\d|3[01])\./, // Docker
-    /^192\.168\.56\./           // VirtualBox host-only
-  ];
+  const VIRTUAL_ADDRESS_PREFIXES = ["10.0.2.", "192.168.56."];
+  const VIRTUAL_INTERFACE = /^(docker|br-|veth|virbr|vmnet|vboxnet)/;
 
   const candidates: string[] = [];
-  for (const entries of Object.values(interfaces)) {
+  for (const [name, entries] of Object.entries(interfaces)) {
+    if (VIRTUAL_INTERFACE.test(name)) continue;
     for (const entry of entries ?? []) {
-      if (entry.family !== 'IPv4' || entry.internal) continue;
-      if (VIRTUAL.some(re => re.test(entry.address))) continue;
+      if (entry.family !== "IPv4" || entry.internal) continue;
+      if (VIRTUAL_ADDRESS_PREFIXES.some(prefix => entry.address.startsWith(prefix))) continue;
       candidates.push(entry.address);
     }
   }
 
-  // Preferir 192.168.x.x (WiFi doméstica/oficina), luego cualquier otra
-  return candidates.find(ip => ip.startsWith('192.168.')) ?? candidates[0] ?? null;
+  // Preferir WiFi/LAN habituales, incluyendo hotspot iPhone 172.20.10.x.
+  return candidates.find(ip => ip.startsWith("192.168.")) ?? candidates.find(ip => ip.startsWith("172.")) ?? candidates[0] ?? null;
 }
 
 function getMobileCompleteRegistrationUrl() {
