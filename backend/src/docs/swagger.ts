@@ -1100,7 +1100,7 @@ Al confirmar, emite evento \`bid:new\` por WebSocket a todos los conectados.`,
         patch: {
           tags: ['Admin - Subastas'],
           summary: '[ADMIN] 🔨 Cerrar puja y adjudicar ítem',
-          description: 'Determina al ganador (última puja confirmada). Crea Purchase con comisiones (5%). Si nadie pujó, la empresa compra el ítem al precio base. Emite `item:sold` y `auction:item-changed` por WebSocket. Envía mensaje privado al ganador con importe + comisiones + costo de envío a dirección declarada.',
+          description: 'Determina al ganador (última puja confirmada). Crea Purchase con comisión de compra (10%). Si nadie pujó, la empresa compra el ítem al precio base. Emite `item:sold` y `auction:item-changed` por WebSocket. Envía mensaje privado al ganador con importe + comisiones + costo de envío a dirección declarada.',
           parameters: [idParam(), idParam('itemId')],
           responses: {
             200: { description: 'Ítem adjudicado. Purchase creado. Eventos WebSocket emitidos.' },

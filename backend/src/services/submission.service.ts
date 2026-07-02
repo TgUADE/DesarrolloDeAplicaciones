@@ -143,12 +143,16 @@ export const submissionService = {
     ]);
     const submissions = rows.map((s) => {
       const { producto, ...rest } = s;
+      const ventaImporte = producto?.producto?.registros?.[0]?.importe ?? null;
+      
+      const comisionPct = s.comisionPorcentaje != null ? Number(s.comisionPorcentaje) : null;
+      const ventaComision = ventaImporte != null && comisionPct != null ? (Number(ventaImporte) * comisionPct) / 100 : null;
       return {
         ...rest,
         productoStatus: producto?.status ?? null,
         subastaEstado: producto?.producto?.itemsCatalogo?.[0]?.catalogo?.subasta?.estado ?? null,
-        ventaImporte: producto?.producto?.registros?.[0]?.importe ?? null,
-        ventaComision: producto?.producto?.registros?.[0]?.comision ?? null,
+        ventaImporte,
+        ventaComision,
         ventaMoneda: producto?.producto?.registros?.[0]?.app?.moneda ?? s.moneda ?? null,
         ventaStatus: producto?.producto?.registros?.[0]?.app?.status ?? null,
         vendidoAt: producto?.producto?.registros?.[0]?.app?.createdAt ?? null,

@@ -430,7 +430,7 @@ async function main() {
     await prisma.registroDeSubasta.create({
       data: {
         subastaId: 5, duenioId, productoId: ventaItem.productoId, clienteId: demoId,
-        importe, comision: Math.round(importe * 0.05),
+        importe, comision: Math.round(importe * 0.1),
         app: { create: { moneda: 'ARS', status: 'pendiente_pago', paymentMethodId: demoPm?.id ?? null, costoEnvio: Math.round(importe * 0.02) } },
       },
     });

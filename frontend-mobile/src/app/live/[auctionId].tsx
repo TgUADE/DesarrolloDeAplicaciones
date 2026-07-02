@@ -281,7 +281,7 @@ export default function SubastaEnVivo() {
   const selectedPaymentMethod = paymentMethods.find((pm) => pm.id === pmId) ?? null;
   const selectedAvailable = Number(selectedPaymentMethod?.montoDisponible ?? selectedPaymentMethod?.montoGarantia ?? 0);
   const bidAmount = Number(monto || 0);
-  const estimatedBidTotal = bidAmount ? bidAmount + bidAmount * 0.05 + Math.round(bidAmount * 0.02) : 0;
+  const estimatedBidTotal = bidAmount ? bidAmount + bidAmount * 0.1 + Math.round(bidAmount * 0.02) : 0; // comisión de compra 10% + envío 2%
   const mayApplyFine = !!selectedPaymentMethod && bidAmount > 0 && selectedAvailable > 0 && estimatedBidTotal > selectedAvailable;
   const methodTitle = (pm: PaymentMethod) => {
     if (pm.tipo.startsWith('tarjeta')) return `${pm.banco ?? 'Tarjeta'} ···· ${pm.numeroTarjeta ?? ''}`.trim();

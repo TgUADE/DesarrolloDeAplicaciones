@@ -24,7 +24,7 @@ const itemDetailInclude = {
 import { Request } from 'express';
 
 export const ITEM_TIMER_MS = 1 * 60 * 1000;
-const PURCHASE_COMMISSION_RATE = 0.05;
+const PURCHASE_COMMISSION_RATE = 0.1; // Comisión de COMPRA: 10% fijo sobre la oferta (lo paga el comprador). La comisión de VENTA es el % pactado con el vendedor (itemSubmission.comisionPorcentaje).
 const PURCHASE_SHIPPING_RATE = 0.02;
 const BLOCKING_PURCHASE_STATUSES = ['derivado_justicia'];
 const FINE_RATE = 0.1;
